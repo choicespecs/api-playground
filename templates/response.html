@@ -1,0 +1,124 @@
+{{/* response.html — returned by /send, swapped into #response-body */}}
+
+{{ if .Error }}
+    <div class="p-6">
+        <div role="alert" class="alert alert-error">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+            </svg>
+            <span class="font-code text-sm">{{ .Error }}</span>
+        </div>
+    </div>
+
+{{ else }}
+<div class="flex flex-col h-full overflow-hidden">
+
+    <!-- ── Status bar ── -->
+    <div class="flex items-center gap-3 px-4 py-2 border-b border-base-300 bg-base-200/50 shrink-0 flex-wrap">
+        <span class="badge {{ .StatusClass }} badge-lg font-code font-bold">
+            {{ .StatusText }}
+        </span>
+        <div class="flex items-center gap-1 text-xs text-base-content/50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {{ .Duration }}
+        </div>
+        <div class="flex items-center gap-1 text-xs text-base-content/50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            {{ .Size }}
+        </div>
+        {{ if .IsJSON }}
+        <span class="badge badge-outline badge-xs font-code">JSON</span>
+        {{ end }}
+        {{ if .Truncated }}
+        <span class="badge badge-warning badge-xs">truncated</span>
+        {{ end }}
+    </div>
+
+    <!-- ── 401 Auth Suggestion ── -->
+    {{ if .AuthSuggestion }}
+    <div class="mx-4 mt-3 p-3 rounded-lg border border-warning/40 bg-warning/5 shrink-0">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="text-base">🔒</span>
+            <span class="font-semibold text-sm text-warning">401 — Authentication Required</span>
+        </div>
+        <p class="text-xs text-base-content/60 mb-2">
+            Detected auth type:
+            <span class="badge badge-xs badge-warning font-code">{{ .AuthSuggestion }}</span>
+        </p>
+
+        <!-- Show any existing profiles that match the suggested type -->
+        {{ if .SuggestedProfiles }}
+        <p class="text-xs text-base-content/50 mb-1.5">Existing profiles you can use:</p>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+            {{ range .SuggestedProfiles }}
+            <span class="badge badge-outline badge-sm font-code">{{ .Name }}</span>
+            {{ end }}
+        </div>
+        <p class="text-xs text-base-content/40">Select one in the <strong>Auth</strong> tab, then resend.</p>
+        {{ else }}
+        <p class="text-xs text-base-content/50 mb-2">No matching profiles found.</p>
+        <button onclick="loadAndOpenAuthModal()"
+                class="btn btn-warning btn-xs gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Create {{ .AuthSuggestion }} Profile
+        </button>
+        {{ end }}
+    </div>
+    {{ end }}
+
+    <!-- ── Tabs: Body / Headers ── -->
+    <div role="tablist" class="tabs tabs-bordered tabs-sm px-4 pt-2 shrink-0 bg-base-200/30">
+        <a role="tab" class="tab tab-active" id="resp-tab-body-btn"
+           onclick="switchRespTab('body', this)">
+            Body
+        </a>
+        <a role="tab" class="tab" id="resp-tab-headers-btn"
+           onclick="switchRespTab('headers', this)">
+            Headers
+            <span class="badge badge-xs badge-ghost ml-1">{{ len .Headers }}</span>
+        </a>
+    </div>
+
+    <!-- ── Body panel ── -->
+    <div id="resp-body-panel" class="flex-1 overflow-auto">
+        <pre class="p-4 font-code text-xs leading-relaxed text-base-content/90 whitespace-pre-wrap break-all">{{ .Body }}</pre>
+    </div>
+
+    <!-- ── Headers panel (hidden by default) ── -->
+    <div id="resp-headers-panel" class="flex-1 overflow-auto hidden">
+        <table class="table table-xs table-pin-rows w-full">
+            <thead>
+                <tr>
+                    <th class="bg-base-200 text-base-content/40 font-normal w-2/5">Header</th>
+                    <th class="bg-base-200 text-base-content/40 font-normal">Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{ range $k, $v := .Headers }}
+                <tr class="hover">
+                    <td class="font-code text-primary/80 text-xs">{{ $k }}</td>
+                    <td class="font-code text-xs text-base-content/70 break-all">{{ $v }}</td>
+                </tr>
+                {{ end }}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<script>
+function switchRespTab(name, el) {
+    document.getElementById('resp-body-panel').classList.toggle('hidden', name !== 'body');
+    document.getElementById('resp-headers-panel').classList.toggle('hidden', name !== 'headers');
+    document.querySelectorAll('#resp-tab-body-btn, #resp-tab-headers-btn')
+            .forEach(function(t) { t.classList.remove('tab-active'); });
+    el.classList.add('tab-active');
+}
+</script>
+{{ end }}

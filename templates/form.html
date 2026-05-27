@@ -1,0 +1,238 @@
+{{/* form.html — request builder form.
+     Used on initial load (via index.html) and returned by /parse-curl and /history/:id.
+     HTMX swaps this into #request-form with outerHTML. */}}
+
+<div id="request-form" class="flex flex-col overflow-hidden flex-1 min-h-0">
+
+    <!-- ── Method + URL ── -->
+    <div class="p-3 border-b border-base-300 shrink-0">
+        <div class="join w-full">
+            <select name="method" class="join-item select select-bordered select-sm font-code font-bold w-28 shrink-0">
+                <option value="GET"    {{ if eq .Method "GET"    }}selected{{ end }}>GET</option>
+                <option value="POST"   {{ if eq .Method "POST"   }}selected{{ end }}>POST</option>
+                <option value="PUT"    {{ if eq .Method "PUT"    }}selected{{ end }}>PUT</option>
+                <option value="DELETE" {{ if eq .Method "DELETE" }}selected{{ end }}>DELETE</option>
+                <option value="PATCH"  {{ if eq .Method "PATCH"  }}selected{{ end }}>PATCH</option>
+            </select>
+            <input
+                type="text"
+                name="url"
+                value="{{ .URL }}"
+                placeholder="https://api.example.com/endpoint"
+                class="join-item input input-bordered input-sm flex-1 font-code text-xs min-w-0"
+            />
+        </div>
+    </div>
+
+    <!-- ── Tabs: Headers / Params / Body / Auth ── -->
+    <div role="tablist" class="tabs tabs-bordered tabs-sm px-3 pt-2 shrink-0">
+        <a role="tab" class="tab tab-active" onclick="switchTab('headers', this)">Headers</a>
+        <a role="tab" class="tab" onclick="switchTab('params', this)">Params</a>
+        <a role="tab" class="tab" onclick="switchTab('body', this)">Body</a>
+        <a role="tab" class="tab" onclick="switchTab('auth', this)">
+            Auth
+            <span id="auth-badge" class="badge badge-xs badge-primary ml-1 {{ if not .AuthProfileID }}hidden{{ end }}">✓</span>
+        </a>
+    </div>
+
+    <!-- ── Tab panels ── -->
+    <div class="flex-1 overflow-y-auto min-h-0">
+
+        <!-- Headers -->
+        <div id="tab-headers" class="p-3">
+            <table class="table table-xs w-full">
+                <thead>
+                    <tr class="text-base-content/40">
+                        <th class="font-normal">Key</th>
+                        <th class="font-normal">Value</th>
+                        <th class="w-6"></th>
+                    </tr>
+                </thead>
+                <tbody id="headers-body">
+                    {{ range .Headers }}
+                    <tr>
+                        <td class="p-1">
+                            <input type="text" name="header_key[]" value="{{ .Key }}"
+                                   placeholder="Content-Type"
+                                   class="input input-ghost input-xs w-full font-code text-primary/80" />
+                        </td>
+                        <td class="p-1">
+                            <input type="text" name="header_val[]" value="{{ .Val }}"
+                                   placeholder="application/json"
+                                   class="input input-ghost input-xs w-full font-code" />
+                        </td>
+                        <td class="p-1">
+                            <button type="button" onclick="removeRow(this)"
+                                    class="btn btn-ghost btn-xs text-base-content/20 hover:text-error px-1">✕</button>
+                        </td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+            <button type="button" onclick="addRow('headers')"
+                    class="btn btn-ghost btn-xs mt-2 text-base-content/30 w-full border border-dashed border-base-300 hover:border-primary hover:text-primary">
+                + Add Header
+            </button>
+        </div>
+
+        <!-- Params (hidden by default) -->
+        <div id="tab-params" class="p-3 hidden">
+            <table class="table table-xs w-full">
+                <thead>
+                    <tr class="text-base-content/40">
+                        <th class="font-normal">Key</th>
+                        <th class="font-normal">Value</th>
+                        <th class="w-6"></th>
+                    </tr>
+                </thead>
+                <tbody id="params-body">
+                    {{ range .Params }}
+                    <tr>
+                        <td class="p-1">
+                            <input type="text" name="param_key[]" value="{{ .Key }}"
+                                   placeholder="page"
+                                   class="input input-ghost input-xs w-full font-code text-primary/80" />
+                        </td>
+                        <td class="p-1">
+                            <input type="text" name="param_val[]" value="{{ .Val }}"
+                                   placeholder="1"
+                                   class="input input-ghost input-xs w-full font-code" />
+                        </td>
+                        <td class="p-1">
+                            <button type="button" onclick="removeRow(this)"
+                                    class="btn btn-ghost btn-xs text-base-content/20 hover:text-error px-1">✕</button>
+                        </td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+            <button type="button" onclick="addRow('params')"
+                    class="btn btn-ghost btn-xs mt-2 text-base-content/30 w-full border border-dashed border-base-300 hover:border-primary hover:text-primary">
+                + Add Param
+            </button>
+        </div>
+
+        <!-- Body (hidden by default) -->
+        <div id="tab-body" class="p-3 hidden">
+            <div class="flex items-center gap-2 mb-2">
+                <select name="body_type" id="body-type-select"
+                        class="select select-bordered select-xs font-code shrink-0"
+                        onchange="updateBodyType(this.value)">
+                    <option value="json" {{ if eq .BodyType "json" }}selected{{ end }}>JSON</option>
+                    <option value="xml"  {{ if eq .BodyType "xml"  }}selected{{ end }}>XML</option>
+                    <option value="form" {{ if eq .BodyType "form" }}selected{{ end }}>Form URL-encoded</option>
+                    <option value="text" {{ if eq .BodyType "text" }}selected{{ end }}>Text</option>
+                </select>
+                <span class="text-xs text-base-content/30">auto-sets Content-Type</span>
+            </div>
+            <textarea name="body" id="body-textarea"
+                      class="textarea textarea-bordered w-full font-code text-xs leading-relaxed h-48 resize-y"
+                      placeholder='{"key": "value"}'>{{ .Body }}</textarea>
+        </div>
+
+        <!-- Auth (hidden by default) -->
+        <div id="tab-auth" class="p-3 hidden">
+            <div class="mb-3">
+                <label class="label py-1">
+                    <span class="label-text text-xs text-base-content/50">Auth Profile</span>
+                    <span class="label-text-alt text-xs text-base-content/30">
+                        Injected by the server — not visible in headers tab
+                    </span>
+                </label>
+                <!-- HTMX loads options; JS restores the selection after each load -->
+                <select id="auth-select"
+                        name="auth_profile_id"
+                        class="select select-bordered select-sm w-full font-code"
+                        data-selected="{{ .AuthProfileID }}"
+                        onchange="onAuthSelectChange(this)"
+                        hx-get="/auth-profiles/options"
+                        hx-trigger="load, authProfilesUpdated from:body"
+                        hx-swap="innerHTML">
+                    <option value="">Loading…</option>
+                </select>
+            </div>
+            <div class="text-xs text-base-content/30 leading-relaxed">
+                The selected profile is applied <em>server-side</em> before the request fires.<br>
+                Create profiles via <strong>🔐 Auth</strong> in the navbar.
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(name, el) {
+    ['headers','params','body','auth'].forEach(function(t) {
+        document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
+    });
+    document.querySelectorAll('[role="tablist"] .tab').forEach(function(t) {
+        t.classList.remove('tab-active');
+    });
+    el.classList.add('tab-active');
+}
+
+// ── Add / remove KV rows ───────────────────────────────────────────────────
+function addRow(type, key, val) {
+    var tbody = document.getElementById(type + '-body');
+    var prefix = type === 'headers' ? 'header' : 'param';
+    var ph = type === 'headers' ? ['Content-Type','application/json'] : ['key','value'];
+    var row = document.createElement('tr');
+    row.innerHTML =
+        '<td class="p-1">' +
+            '<input type="text" name="' + prefix + '_key[]" value="' + (key||'') + '" placeholder="' + ph[0] + '"' +
+            ' class="input input-ghost input-xs w-full font-code text-primary/80" /></td>' +
+        '<td class="p-1">' +
+            '<input type="text" name="' + prefix + '_val[]" value="' + (val||'') + '" placeholder="' + ph[1] + '"' +
+            ' class="input input-ghost input-xs w-full font-code" /></td>' +
+        '<td class="p-1">' +
+            '<button type="button" onclick="removeRow(this)"' +
+            ' class="btn btn-ghost btn-xs text-base-content/20 hover:text-error px-1">✕</button></td>';
+    tbody.appendChild(row);
+}
+
+function removeRow(btn) {
+    btn.closest('tr').remove();
+}
+
+// ── Body type → auto-set Content-Type header ───────────────────────────────
+var bodyContentTypes = {
+    'json': 'application/json',
+    'xml':  'application/xml',
+    'form': 'application/x-www-form-urlencoded',
+    'text': 'text/plain'
+};
+var bodyPlaceholders = {
+    'json': '{"key": "value"}',
+    'xml':  '<root>\n  <key>value</key>\n</root>',
+    'form': 'key=value&other=123',
+    'text': 'plain text body'
+};
+
+function updateBodyType(type) {
+    var ct = bodyContentTypes[type] || 'application/json';
+    // Update textarea placeholder
+    var ta = document.getElementById('body-textarea');
+    if (ta) ta.placeholder = bodyPlaceholders[type] || '';
+
+    // Find an existing Content-Type header row and update it
+    var rows = document.querySelectorAll('#headers-body tr');
+    for (var i = 0; i < rows.length; i++) {
+        var keyInput = rows[i].querySelector('input[name="header_key[]"]');
+        if (keyInput && keyInput.value.toLowerCase() === 'content-type') {
+            rows[i].querySelector('input[name="header_val[]"]').value = ct;
+            return;
+        }
+    }
+    // Not found — add a new header row
+    addRow('headers', 'Content-Type', ct);
+}
+
+// ── Auth select: persist selection across HTMX option reloads ─────────────
+function onAuthSelectChange(sel) {
+    sel.dataset.selected = sel.value;
+    // Show/hide the Auth ✓ badge on the tab
+    var badge = document.getElementById('auth-badge');
+    if (badge) badge.classList.toggle('hidden', !sel.value);
+}
+</script>

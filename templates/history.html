@@ -1,0 +1,56 @@
+{{/* history.html — history sidebar list.
+     Loaded on startup and refreshed after every send, delete, or import. */}}
+
+{{ if not .Entries }}
+    <div class="flex flex-col items-center justify-center h-24 text-base-content/20 text-xs gap-1">
+        <span class="text-2xl">📭</span>
+        <span>No history yet</span>
+    </div>
+{{ else }}
+    {{ range .Entries }}
+    <div class="px-3 py-2 border-b border-base-300/50 cursor-pointer hover:bg-base-300/30 transition-colors group relative"
+         data-history-entry
+         data-url="{{ .URL }}"
+         data-method="{{ .Method }}"
+         hx-get="/history/{{ .ID }}"
+         hx-target="#request-form"
+         hx-swap="outerHTML"
+         title="{{ .URL }}">
+
+        <!-- Delete button — appears on hover -->
+        <button class="absolute top-2 right-2 btn btn-ghost btn-xs opacity-0 group-hover:opacity-100
+                        transition-opacity text-base-content/30 hover:text-error hover:bg-transparent
+                        min-h-0 h-5 w-5 p-0 flex items-center justify-center"
+                hx-delete="/history/{{ .ID }}"
+                hx-swap="none"
+                hx-confirm="Delete this entry?"
+                onclick="event.stopPropagation()"
+                title="Delete">
+            ✕
+        </button>
+
+        <!-- Method + status -->
+        <div class="flex items-center justify-between mb-1 pr-5">
+            <span class="badge badge-xs font-code font-bold method-{{ .Method }}">
+                {{ .Method }}
+            </span>
+            {{ if .Status }}
+            <span class="badge badge-xs {{ .StatusClass }} opacity-80">
+                {{ .Status }}
+            </span>
+            {{ end }}
+        </div>
+
+        <!-- URL (truncated) -->
+        <div class="font-code text-xs text-base-content/60 truncate group-hover:text-base-content/80 pr-5">
+            {{ .ShortURL }}
+        </div>
+
+        <!-- Time + duration -->
+        <div class="text-xs text-base-content/30 mt-0.5">
+            {{ .CreatedAt }}{{ if .Duration }} · {{ .Duration }}{{ end }}
+        </div>
+
+    </div>
+    {{ end }}
+{{ end }}

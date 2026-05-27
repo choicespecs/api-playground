@@ -1,0 +1,7 @@
+{{/* auth_options.html — <option> elements for the auth profile <select>.
+     Loaded via HTMX into the auth dropdown in form.html.
+     Selection is restored client-side by the htmx:afterSettle listener. */}}
+<option value="">— No Auth —</option>
+{{ range .Profiles }}
+<option value="{{ .ID }}">{{ .Name }} ({{ .TypeLabel }})</option>
+{{ end }}
