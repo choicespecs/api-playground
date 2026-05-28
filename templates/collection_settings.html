@@ -1,0 +1,109 @@
+{{/* collection_settings.html — inner content of the Collection Settings modal. */}}
+
+<div class="flex justify-between items-center mb-4">
+    <h3 class="font-bold text-lg flex items-center gap-2">
+        📁 {{ .Collection.Name }}
+    </h3>
+    <form method="dialog">
+        <button class="btn btn-sm btn-ghost btn-circle">✕</button>
+    </form>
+</div>
+
+{{ if .Saved }}
+<div class="alert alert-success p-2 text-xs mb-4 rounded-lg flex gap-2">
+    <span>✓</span> Settings saved.
+</div>
+{{ end }}
+{{ if .Error }}
+<div class="alert alert-error p-2 text-xs mb-4 rounded-lg">{{ .Error }}</div>
+{{ end }}
+
+<!-- ── Name + Default Auth ── -->
+<form hx-post="/collections/{{ .Collection.ID }}/settings"
+      hx-target="#coll-settings-content"
+      hx-swap="innerHTML"
+      class="mb-2">
+
+    <div class="flex flex-col gap-3">
+        <div>
+            <label class="label py-1"><span class="label-text text-xs">Collection Name</span></label>
+            <input type="text" name="name"
+                   value="{{ .Collection.Name }}"
+                   class="input input-sm input-bordered w-full" required />
+        </div>
+        <div>
+            <label class="label py-1">
+                <span class="label-text text-xs">Default Auth Profile</span>
+                <span class="label-text-alt text-xs opacity-40">inherited by requests with no auth set</span>
+            </label>
+            <select name="auth_profile_id" class="select select-sm select-bordered w-full font-code">
+                <option value="">— None —</option>
+                {{ range .Profiles }}
+                <option value="{{ .ID }}" {{ if eq $.Collection.AuthProfileID .ID }}selected{{ end }}>
+                    {{ .Name }} ({{ .TypeLabel }})
+                </option>
+                {{ end }}
+            </select>
+        </div>
+    </div>
+
+    <div class="flex justify-end mt-3">
+        <button type="submit" class="btn btn-primary btn-sm gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            Save
+        </button>
+    </div>
+</form>
+
+<div class="divider text-xs opacity-50">Collection Variables</div>
+
+<div class="text-xs text-base-content/40 mb-3">
+    Use <code class="font-code text-primary/80">{{ printf "{{NAME}}" }}</code> in requests saved to this collection.
+    Collection variables override global variables.
+</div>
+
+<!-- Variables list -->
+{{ if .Collection.Variables }}
+<div class="flex flex-col gap-1 mb-3 max-h-36 overflow-y-auto pr-1">
+    {{ range .Collection.Variables }}
+    <div class="flex items-center gap-2 p-2 bg-base-200 rounded-lg group">
+        <span class="font-code text-xs text-primary/90 bg-primary/10 px-1.5 py-0.5 rounded shrink-0 select-all">{{ printf "{{%s}}" .Name }}</span>
+        <span class="text-base-content/25 text-xs shrink-0">→</span>
+        <span class="font-code text-xs text-base-content/70 truncate flex-1" title="{{ .Value }}">{{ .Value }}</span>
+        <button class="btn btn-ghost btn-xs text-error opacity-0 group-hover:opacity-100 shrink-0"
+                hx-delete="/collections/{{ $.Collection.ID }}/variables/{{ .ID }}"
+                hx-target="#coll-settings-content"
+                hx-swap="innerHTML">🗑</button>
+    </div>
+    {{ end }}
+</div>
+{{ else }}
+<p class="text-xs text-base-content/25 italic mb-3">No collection variables yet.</p>
+{{ end }}
+
+<!-- Add variable form -->
+<form hx-post="/collections/{{ .Collection.ID }}/variables"
+      hx-target="#coll-settings-content"
+      hx-swap="innerHTML">
+    <div class="flex gap-2 items-end">
+        <div class="w-36 shrink-0">
+            <label class="label py-1"><span class="label-text text-xs">Name</span></label>
+            <input type="text" name="name" placeholder="BASE_URL"
+                   pattern="[A-Za-z_][A-Za-z0-9_]*" required
+                   class="input input-sm input-bordered w-full font-code" />
+        </div>
+        <div class="flex-1">
+            <label class="label py-1"><span class="label-text text-xs">Value</span></label>
+            <input type="text" name="value" placeholder="https://api.example.com"
+                   class="input input-sm input-bordered w-full font-code" />
+        </div>
+        <button type="submit" class="btn btn-sm btn-primary shrink-0 gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add
+        </button>
+    </div>
+</form>

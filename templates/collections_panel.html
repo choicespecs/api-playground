@@ -1,0 +1,83 @@
+{{/* collections_panel.html — sidebar collections list.
+     Loaded by HTMX into #collections-list; refreshes on collectionsUpdated. */}}
+
+{{ if not .Collections }}
+<div class="flex flex-col items-center justify-center py-8 px-3 text-center text-base-content/30">
+    <div class="text-3xl mb-2">📁</div>
+    <div class="text-xs">No collections yet.</div>
+    <div class="text-xs mt-0.5">Use the form above to create one.</div>
+</div>
+{{ end }}
+
+{{ range .Collections }}
+{{/* Capture collection ID now — inside range .Requests the dot changes to
+     the request, so $.ID would look up ID on the root gin.H (always empty). */}}
+{{ $collID := .ID }}
+{{ $collName := .Name }}
+<div class="border-b border-base-300/50 last:border-0">
+
+    <!-- Collection header row -->
+    <div class="flex items-center gap-1 px-2 py-1.5 hover:bg-base-300/50 group cursor-pointer"
+         onclick="toggleColl('{{ $collID }}')">
+        <!-- Expand arrow -->
+        <svg id="coll-arrow-{{ $collID }}"
+             class="h-3 w-3 text-base-content/30 shrink-0 transition-transform duration-150"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+        <!-- Folder icon -->
+        <span class="text-sm shrink-0">📁</span>
+        <!-- Name -->
+        <span class="text-xs font-semibold truncate flex-1">{{ $collName }}</span>
+        <!-- Request count -->
+        <span class="text-xs text-base-content/30 shrink-0 mr-1">{{ len .Requests }}</span>
+        <!-- Settings + delete (show on hover) -->
+        <div class="hidden group-hover:flex items-center gap-0.5 shrink-0">
+            <button class="btn btn-ghost btn-xs h-5 min-h-0 px-1 opacity-50 hover:opacity-100"
+                    title="Collection settings"
+                    onclick="event.stopPropagation(); openCollSettings('{{ $collID }}')">⚙</button>
+            <button class="btn btn-ghost btn-xs h-5 min-h-0 px-1 text-error opacity-50 hover:opacity-100"
+                    title="Delete collection"
+                    hx-delete="/collections/{{ $collID }}"
+                    hx-swap="none"
+                    hx-confirm="Delete collection '{{ $collName }}' and all its requests?"
+                    onclick="event.stopPropagation()">🗑</button>
+        </div>
+    </div>
+
+    <!-- Requests list (collapsed by default) -->
+    <div id="coll-reqs-{{ $collID }}" class="hidden">
+        {{ if .AuthProfileID }}
+        <div class="mx-2 mb-1 px-2 py-0.5 bg-primary/10 rounded text-xs text-primary/70 flex items-center gap-1">
+            <span>🔐</span>
+            <span class="truncate">Default auth set</span>
+        </div>
+        {{ end }}
+
+        {{ if not .Requests }}
+        <div class="px-8 py-2 text-xs text-base-content/25 italic">No saved requests.</div>
+        {{ end }}
+
+        {{ range .Requests }}
+        <div class="flex items-center gap-1.5 px-7 py-1 hover:bg-base-300/60 cursor-pointer group"
+             onclick="loadCollReq('{{ $collID }}', '{{ .ID }}')">
+            <span class="font-code text-xs font-bold shrink-0
+                {{ if eq .Method "GET" }}text-green-400
+                {{ else if eq .Method "POST" }}text-sky-400
+                {{ else if eq .Method "PUT" }}text-yellow-400
+                {{ else if eq .Method "DELETE" }}text-red-400
+                {{ else if eq .Method "PATCH" }}text-purple-400
+                {{ else }}text-base-content/50{{ end }}">{{ .Method }}</span>
+            <span class="text-xs truncate flex-1" title="{{ .URL }}">{{ .Name }}</span>
+            <button class="btn btn-ghost btn-xs h-4 min-h-0 px-0.5 text-error opacity-0 group-hover:opacity-60 hover:opacity-100 shrink-0"
+                    onclick="event.stopPropagation(); deleteCollReq('{{ $collID }}', '{{ .ID }}')"
+                    title="Remove from collection">✕</button>
+        </div>
+        {{ end }}
+
+        <!-- Inline padding at the bottom of expanded collection -->
+        <div class="h-1"></div>
+    </div>
+
+</div>
+{{ end }}

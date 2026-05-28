@@ -3,6 +3,8 @@
      HTMX swaps this into #request-form with outerHTML. */}}
 
 <div id="request-form" class="flex flex-col overflow-hidden flex-1 min-h-0">
+    <!-- Tracks which collection this request was loaded from (empty = none) -->
+    <input type="hidden" name="collection_id" id="current-collection-id" value="{{ .CollectionID }}" />
 
     <!-- ── Method + URL ── -->
     <div class="p-3 border-b border-base-300 shrink-0">
@@ -17,10 +19,22 @@
             <input
                 type="text"
                 name="url"
+                id="url-input"
                 value="{{ .URL }}"
-                placeholder="https://api.example.com/endpoint"
+                placeholder="https://api.example.com/endpoint  — or paste a curl command here"
                 class="join-item input input-bordered input-sm flex-1 font-code text-xs min-w-0"
+                oninput="if(window.updateVarPreview)updateVarPreview(this.value)"
+                onpaste="handleUrlPaste(event)"
             />
+        </div>
+        <!-- Live variable-expansion preview — shown when the URL contains variable placeholders -->
+        <div id="url-var-preview"
+             class="hidden mt-1 px-1 text-xs font-code text-success/50 truncate"
+             title="Expanded URL (preview — actual expansion happens server-side)"></div>
+
+        <!-- Variables quickbar — chips for every defined variable; click to insert the token -->
+        <div id="vars-quickbar" class="hidden flex-wrap gap-1 mt-1.5 px-0.5">
+            <!-- Populated by updateVarsQuickbar() in index.html -->
         </div>
     </div>
 
@@ -215,16 +229,14 @@ function updateBodyType(type) {
     var ta = document.getElementById('body-textarea');
     if (ta) ta.placeholder = bodyPlaceholders[type] || '';
 
-    // Find an existing Content-Type header row and update it
-    var rows = document.querySelectorAll('#headers-body tr');
-    for (var i = 0; i < rows.length; i++) {
-        var keyInput = rows[i].querySelector('input[name="header_key[]"]');
-        if (keyInput && keyInput.value.toLowerCase() === 'content-type') {
-            rows[i].querySelector('input[name="header_val[]"]').value = ct;
-            return;
+    // Remove ALL existing Content-Type rows, then add exactly one.
+    // This is fully idempotent — no matter how many exist, we end up with one.
+    Array.from(document.querySelectorAll('#headers-body tr')).forEach(function(row) {
+        var k = row.querySelector('input[name="header_key[]"]');
+        if (k && k.value.trim().toLowerCase() === 'content-type') {
+            row.remove();
         }
-    }
-    // Not found — add a new header row
+    });
     addRow('headers', 'Content-Type', ct);
 }
 
@@ -235,4 +247,71 @@ function onAuthSelectChange(sel) {
     var badge = document.getElementById('auth-badge');
     if (badge) badge.classList.toggle('hidden', !sel.value);
 }
+
+// ── Paste curl/raw-HTTP into URL bar ──────────────────────────────────────
+// If the user pastes a curl command (or raw HTTP) into the URL field,
+// intercept it, send it to the parser, and populate the full form instead.
+function handleUrlPaste(evt) {
+    // Read what was pasted (before the browser inserts it)
+    var text = (evt.clipboardData || window.clipboardData).getData('text').trim();
+    if (!text) return;
+
+    var isCurl = /^curl[\s\t]/i.test(text);
+    var isHttp = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s/i.test(text);
+    if (!isCurl && !isHttp) return; // looks like a plain URL — let it through normally
+
+    // It's a curl / raw HTTP blob — prevent it landing in the URL input
+    evt.preventDefault();
+
+    var endpoint = isCurl ? '/parse-curl'    : '/parse-raw-http';
+    var field    = isCurl ? 'curl_command'   : 'raw_http';
+
+    var fd = new FormData();
+    fd.append(field, text);
+
+    // Show a brief "Importing…" placeholder in the URL field while we wait
+    var urlInput = document.getElementById('url-input');
+    var prevVal  = urlInput.value;
+    urlInput.value = 'Importing…';
+    urlInput.disabled = true;
+
+    fetch(endpoint, { method: 'POST', body: fd })
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+            // The server returns a full #request-form outerHTML replacement
+            var tmp = document.createElement('div');
+            tmp.innerHTML = html;
+            var newForm = tmp.firstElementChild;
+            if (newForm) {
+                var old = document.getElementById('request-form');
+                if (old) {
+                    old.replaceWith(newForm);
+                    // Let HTMX process the newly inserted element
+                    if (window.htmx) htmx.process(newForm);
+                }
+            } else {
+                // Fallback: just restore the input
+                urlInput.disabled = false;
+                urlInput.value = prevVal;
+            }
+        })
+        .catch(function() {
+            urlInput.disabled = false;
+            urlInput.value = prevVal;
+        });
+}
+
+// ── Deduplicate Content-Type on every form load / HTMX swap-in ───────────
+// Runs immediately each time this <script> block executes (i.e. on every swap).
+// Removes any Content-Type rows beyond the first so the body-type <select>
+// can never cause a duplicate during HTML insertion.
+(function dedupeContentType() {
+    var found = false;
+    Array.from(document.querySelectorAll('#headers-body tr')).forEach(function(row) {
+        var k = row.querySelector('input[name="header_key[]"]');
+        if (k && k.value.trim().toLowerCase() === 'content-type') {
+            if (found) { row.remove(); } else { found = true; }
+        }
+    });
+})();
 </script>

@@ -1,276 +1,166 @@
-{{/* auth_profiles.html — inner content of the Auth Profiles modal.
-     Loaded by HTMX on page start and after every create/delete. */}}
+{{/* auth_profiles.html — Token API auth profiles modal.
+     Simple static auth (bearer tokens, API keys, basic auth) should use
+     {{VARIABLE}} placeholders in request headers instead of a profile here. */}}
 
 <div class="flex justify-between items-center mb-4">
-    <h3 class="font-bold text-lg flex items-center gap-2">
-        🔐 Auth Profiles
-    </h3>
+    <h3 class="font-bold text-lg flex items-center gap-2">🔐 Auth Profiles</h3>
     <form method="dialog">
         <button class="btn btn-sm btn-ghost btn-circle">✕</button>
     </form>
 </div>
 
-<!-- ── Existing profiles list ── -->
+<div class="text-xs text-base-content/40 bg-base-200 rounded-lg p-2.5 leading-relaxed mb-4">
+    <strong>When to use this:</strong> your API requires a login call to obtain a short-lived token
+    before every session. Configure the login endpoint once — the token is fetched automatically,
+    cached until it expires, and refreshed on 401.<br>
+    <span class="opacity-70">For static tokens or API keys, just use
+    <code class="font-code text-primary/80">{{ printf "{{MY_TOKEN}}" }}</code> in a header instead.</span>
+</div>
+
+<!-- ── Existing profiles ── -->
 {{ if .Profiles }}
-<div class="flex flex-col gap-2 mb-4 max-h-52 overflow-y-auto pr-1">
+<div class="flex flex-col gap-2 mb-4 max-h-48 overflow-y-auto pr-1">
     {{ range .Profiles }}
     <div class="flex items-center justify-between p-3 bg-base-200 rounded-lg gap-3">
         <div class="flex-1 min-w-0">
             <div class="font-semibold text-sm truncate">{{ .Name }}</div>
             <div class="flex items-center gap-1.5 mt-0.5">
-                <span class="badge badge-xs {{ .TypeBadgeClass }}">{{ .TypeLabel }}</span>
-                {{ if eq .Type "bearer" }}
-                <span class="text-xs text-base-content/40 font-code truncate">{{ truncate .Token 22 }}</span>
-                {{ else if eq .Type "basic" }}
-                <span class="text-xs text-base-content/40 font-code">{{ .Username }}</span>
-                {{ else if eq .Type "apikey" }}
-                <span class="text-xs text-base-content/40 font-code">{{ .KeyName }}</span>
-                {{ else if eq .Type "oauth2" }}
-                <span class="text-xs text-base-content/40 font-code truncate">{{ truncate .ClientID 22 }}</span>
-                {{ else if eq .Type "login" }}
-                <span class="text-xs text-base-content/40 font-code truncate">{{ truncate .LoginURL 28 }}</span>
-                {{ end }}
+                <span class="badge badge-xs badge-success">Token API</span>
+                <span class="text-xs text-base-content/40 font-code truncate">{{ .LoginURL }}</span>
             </div>
         </div>
         <button class="btn btn-ghost btn-xs text-error shrink-0"
                 hx-delete="/auth-profiles/{{ .ID }}"
                 hx-target="#auth-modal-content"
                 hx-swap="innerHTML"
-                title="Delete profile">
-            🗑
-        </button>
+                title="Delete profile">🗑</button>
     </div>
     {{ end }}
 </div>
 {{ else }}
-<div class="text-center py-6 text-base-content/30 text-sm mb-2">
+<div class="text-center py-4 text-base-content/30 text-sm mb-3">
     <div class="text-3xl mb-2">🔑</div>
-    No auth profiles yet. Create one below.
+    No profiles yet. Create one below.
 </div>
 {{ end }}
 
-<div class="divider text-xs opacity-50">Create New Profile</div>
+<div class="divider text-xs opacity-50">New Token API Profile</div>
 
 <!-- ── Create form ── -->
 <form hx-post="/auth-profiles"
       hx-target="#auth-modal-content"
       hx-swap="innerHTML">
 
-    <div class="flex gap-3 mb-3">
+    <div class="mb-3">
+        <label class="label py-1"><span class="label-text text-xs">Profile Name</span></label>
+        <input type="text" name="name" placeholder="My API Auth"
+               class="input input-sm input-bordered w-full" />
+    </div>
+
+    <!-- Step 1: Login request -->
+    <div class="text-xs font-semibold text-base-content/50 uppercase tracking-widest mb-2">
+        Step 1 — Login Request
+    </div>
+
+    <div class="flex gap-2 mb-2">
+        <div class="w-24 shrink-0">
+            <label class="label py-1"><span class="label-text text-xs">Method</span></label>
+            <select name="login_method" class="select select-sm select-bordered w-full font-code">
+                <option value="POST">POST</option>
+                <option value="GET">GET</option>
+                <option value="PUT">PUT</option>
+            </select>
+        </div>
         <div class="flex-1">
-            <label class="label py-1"><span class="label-text text-xs">Profile Name</span></label>
-            <input type="text" name="name" placeholder="My API Auth"
-                   class="input input-sm input-bordered w-full" />
+            <label class="label py-1"><span class="label-text text-xs">Login URL</span></label>
+            <input type="text" name="login_url"
+                   placeholder="https://api.example.com/auth/login"
+                   class="input input-sm input-bordered w-full font-code" />
         </div>
-        <div class="w-44 shrink-0">
-            <label class="label py-1"><span class="label-text text-xs">Type</span></label>
-            <select name="type" id="new-auth-type" class="select select-sm select-bordered w-full"
-                    onchange="showAuthFields(this.value)">
-                <option value="bearer">Bearer Token</option>
-                <option value="basic">Basic Auth</option>
-                <option value="apikey">API Key</option>
-                <option value="oauth2">OAuth2</option>
-                <option value="login">Token API ✨</option>
+    </div>
+
+    <div class="flex gap-2 mb-2">
+        <div class="w-36 shrink-0">
+            <label class="label py-1"><span class="label-text text-xs">Body Type</span></label>
+            <select name="login_body_type" class="select select-sm select-bordered w-full font-code">
+                <option value="json">JSON</option>
+                <option value="form">Form URL-encoded</option>
+                <option value="">None</option>
             </select>
         </div>
-    </div>
-
-    <!-- Bearer Token fields -->
-    <div id="auth-fields-bearer" style="display:flex" class="flex-col gap-2">
-        <div>
-            <label class="label py-1"><span class="label-text text-xs">Token</span></label>
-            <input type="text" name="token" placeholder="eyJhbGciOiJIUzI1NiJ9…"
-                   class="input input-sm input-bordered w-full font-code" />
-        </div>
-    </div>
-
-    <!-- Basic Auth fields -->
-    <div id="auth-fields-basic" style="display:none" class="flex-col gap-2">
-        <div class="flex gap-2">
-            <div class="flex-1">
-                <label class="label py-1"><span class="label-text text-xs">Username</span></label>
-                <input type="text" name="username" placeholder="user"
-                       class="input input-sm input-bordered w-full" />
-            </div>
-            <div class="flex-1">
-                <label class="label py-1"><span class="label-text text-xs">Password</span></label>
-                <input type="password" name="password" placeholder="••••"
-                       class="input input-sm input-bordered w-full" />
-            </div>
-        </div>
-    </div>
-
-    <!-- API Key fields -->
-    <div id="auth-fields-apikey" style="display:none" class="flex-col gap-2">
-        <div class="flex gap-2">
-            <div class="flex-1">
-                <label class="label py-1"><span class="label-text text-xs">Header / Param Name</span></label>
-                <input type="text" name="key_name" placeholder="X-API-Key"
-                       class="input input-sm input-bordered w-full font-code" />
-            </div>
-            <div class="flex-1">
-                <label class="label py-1"><span class="label-text text-xs">Value</span></label>
-                <input type="text" name="key_value" placeholder="sk-…"
-                       class="input input-sm input-bordered w-full font-code" />
-            </div>
-        </div>
-        <div>
-            <label class="label py-1"><span class="label-text text-xs">Send In</span></label>
-            <select name="key_in" class="select select-sm select-bordered w-full">
-                <option value="header">Header</option>
-                <option value="query">Query Param</option>
-            </select>
-        </div>
-    </div>
-
-    <!-- OAuth2 fields (client_credentials) -->
-    <div id="auth-fields-oauth2" style="display:none" class="flex-col gap-2">
-        <div class="flex gap-2">
-            <div class="flex-1">
-                <label class="label py-1"><span class="label-text text-xs">Client ID</span></label>
-                <input type="text" name="client_id" placeholder="client_id"
-                       class="input input-sm input-bordered w-full font-code" />
-            </div>
-            <div class="flex-1">
-                <label class="label py-1"><span class="label-text text-xs">Client Secret</span></label>
-                <input type="password" name="client_secret" placeholder="••••"
-                       class="input input-sm input-bordered w-full" />
-            </div>
-        </div>
-        <div>
-            <label class="label py-1"><span class="label-text text-xs">Token URL</span></label>
-            <input type="text" name="token_url" placeholder="https://auth.example.com/oauth/token"
-                   class="input input-sm input-bordered w-full font-code" />
-        </div>
-        <div>
-            <label class="label py-1"><span class="label-text text-xs">Scope <span class="opacity-40">(optional)</span></span></label>
-            <input type="text" name="scope" placeholder="read:api write:api"
-                   class="input input-sm input-bordered w-full font-code" />
-        </div>
-    </div>
-
-    <!-- Token API (login) fields -->
-    <div id="auth-fields-login" style="display:none" class="flex-col gap-3">
-
-        <!-- Explainer -->
-        <div class="text-xs text-base-content/40 bg-base-200 rounded-lg p-2.5 leading-relaxed">
-            Calls your login/auth endpoint first, extracts a token from the JSON response,
-            then injects it into every subsequent request automatically.
-            Tokens are cached until they expire.
-        </div>
-
-        <!-- Step 1: Login request -->
-        <div class="text-xs font-semibold text-base-content/50 uppercase tracking-widest mt-1">
-            Step 1 — Login Request
-        </div>
-
-        <div class="flex gap-2">
-            <div class="w-24 shrink-0">
-                <label class="label py-1"><span class="label-text text-xs">Method</span></label>
-                <select name="login_method" class="select select-sm select-bordered w-full font-code">
-                    <option value="POST">POST</option>
-                    <option value="GET">GET</option>
-                    <option value="PUT">PUT</option>
-                </select>
-            </div>
-            <div class="flex-1">
-                <label class="label py-1"><span class="label-text text-xs">Login URL</span></label>
-                <input type="text" name="login_url"
-                       placeholder="https://api.example.com/auth/login"
-                       class="input input-sm input-bordered w-full font-code" />
-            </div>
-        </div>
-
-        <div class="flex gap-2">
-            <div class="w-36 shrink-0">
-                <label class="label py-1"><span class="label-text text-xs">Body Type</span></label>
-                <select name="login_body_type" class="select select-sm select-bordered w-full font-code">
-                    <option value="json">JSON</option>
-                    <option value="form">Form URL-encoded</option>
-                    <option value="">None / custom</option>
-                </select>
-            </div>
-            <div class="flex-1">
-                <label class="label py-1"><span class="label-text text-xs">Request Body (credentials)</span></label>
-                <textarea name="login_body" rows="3"
-                          placeholder='{"username": "you@example.com", "password": "••••"}'
-                          class="textarea textarea-bordered textarea-sm w-full font-code text-xs leading-relaxed resize-none"></textarea>
-            </div>
-        </div>
-
-        <div>
-            <label class="label py-1">
-                <span class="label-text text-xs">Extra Request Headers <span class="opacity-40">(optional)</span></span>
-                <span class="label-text-alt text-xs opacity-30">Key: Value, one per line</span>
-            </label>
-            <textarea name="login_headers_raw" rows="2"
-                      placeholder="X-App-ID: myapp&#10;Accept-Language: en"
+        <div class="flex-1">
+            <label class="label py-1"><span class="label-text text-xs">Body (credentials)</span></label>
+            <textarea name="login_body" rows="3"
+                      placeholder='{"username": "you@example.com", "password": "••••"}'
                       class="textarea textarea-bordered textarea-sm w-full font-code text-xs leading-relaxed resize-none"></textarea>
         </div>
+    </div>
 
-        <!-- Step 2: Token extraction -->
-        <div class="text-xs font-semibold text-base-content/50 uppercase tracking-widest mt-1">
-            Step 2 — Extract Token from Response
-        </div>
+    <div class="mb-3">
+        <label class="label py-1">
+            <span class="label-text text-xs">Extra Headers <span class="opacity-40">(optional)</span></span>
+            <span class="label-text-alt text-xs opacity-30">Key: Value, one per line</span>
+        </label>
+        <textarea name="login_headers_raw" rows="2"
+                  placeholder="X-App-ID: myapp"
+                  class="textarea textarea-bordered textarea-sm w-full font-code text-xs leading-relaxed resize-none"></textarea>
+    </div>
 
-        <div>
+    <!-- Step 2: Token extraction -->
+    <div class="text-xs font-semibold text-base-content/50 uppercase tracking-widest mb-2">
+        Step 2 — Extract Token from Response
+    </div>
+
+    <div class="flex gap-2 mb-3">
+        <div class="flex-1">
             <label class="label py-1">
                 <span class="label-text text-xs">Token Path</span>
                 <span class="label-text-alt text-xs opacity-40">dot-notation · e.g. <code>data.token</code></span>
             </label>
             <input type="text" name="token_path" placeholder="access_token"
                    class="input input-sm input-bordered w-full font-code" />
-            <div class="text-xs text-base-content/30 mt-1 ml-0.5">
-                Common: <code class="font-code">access_token</code> · <code class="font-code">token</code> · <code class="font-code">data.jwt</code> · <code class="font-code">result.auth.token</code>
-            </div>
         </div>
-
-        <div>
+        <div class="flex-1">
             <label class="label py-1">
                 <span class="label-text text-xs">Expiry Path <span class="opacity-40">(optional)</span></span>
-                <span class="label-text-alt text-xs opacity-40">integer seconds · e.g. <code>expires_in</code></span>
+                <span class="label-text-alt text-xs opacity-40">integer seconds</span>
             </label>
             <input type="text" name="expiry_path" placeholder="expires_in"
                    class="input input-sm input-bordered w-full font-code" />
         </div>
+    </div>
 
-        <!-- Step 3: Injection -->
-        <div class="text-xs font-semibold text-base-content/50 uppercase tracking-widest mt-1">
-            Step 3 — Inject Into Requests
+    <!-- Step 3: Injection -->
+    <div class="text-xs font-semibold text-base-content/50 uppercase tracking-widest mb-2">
+        Step 3 — Inject Into Requests
+    </div>
+
+    <div class="flex gap-2 mb-3">
+        <div class="flex-1">
+            <label class="label py-1"><span class="label-text text-xs">Header Name</span></label>
+            <input type="text" name="token_header_name" placeholder="Authorization"
+                   class="input input-sm input-bordered w-full font-code" />
         </div>
-
-        <div class="flex gap-2">
-            <div class="flex-1">
-                <label class="label py-1"><span class="label-text text-xs">Header Name</span></label>
-                <input type="text" name="token_header_name" placeholder="Authorization"
-                       class="input input-sm input-bordered w-full font-code" />
-            </div>
-            <div class="w-36 shrink-0">
-                <label class="label py-1">
-                    <span class="label-text text-xs">Prefix</span>
-                    <span class="label-text-alt text-xs opacity-30">before token value</span>
-                </label>
-                <input type="text" name="token_prefix" placeholder="Bearer "
-                       class="input input-sm input-bordered w-full font-code" />
-            </div>
+        <div class="w-36 shrink-0">
+            <label class="label py-1">
+                <span class="label-text text-xs">Prefix</span>
+                <span class="label-text-alt text-xs opacity-30">before token</span>
+            </label>
+            <input type="text" name="token_prefix" placeholder="Bearer "
+                   class="input input-sm input-bordered w-full font-code" />
         </div>
+    </div>
 
-        <!-- Test button -->
-        <div id="login-test-result" class="hidden"></div>
-        <div class="flex justify-between items-center mt-1">
-            <button type="button" onclick="testLoginConfig(this)"
-                    class="btn btn-outline btn-sm gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Test Login
-            </button>
-            <span class="text-xs text-base-content/30">Verify config before saving</span>
-        </div>
-
-    </div><!-- end login fields -->
-
-    <div class="flex justify-end mt-4">
+    <!-- Test -->
+    <div id="login-test-result" class="hidden mb-3"></div>
+    <div class="flex justify-between items-center">
+        <button type="button" onclick="testLoginConfig(this)"
+                class="btn btn-outline btn-sm gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Test Login
+        </button>
         <button type="submit" class="btn btn-primary btn-sm gap-1">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -281,20 +171,11 @@
 </form>
 
 <script>
-function showAuthFields(type) {
-    ['bearer','basic','apikey','oauth2','login'].forEach(function(t) {
-        var el = document.getElementById('auth-fields-' + t);
-        if (el) el.style.display = (t === type) ? 'flex' : 'none';
-    });
-}
-
-// Collects all form fields relevant to the login profile and POSTs to /auth-profiles/test-login
 function testLoginConfig(btn) {
     var form = btn.closest('form');
     var resultEl = document.getElementById('login-test-result');
     if (!form || !resultEl) return;
 
-    // Gather only login-related fields from the form
     var data = new FormData();
     ['login_method','login_url','login_body_type','login_body',
      'login_headers_raw','token_path','token_header_name','token_prefix','expiry_path'
@@ -306,7 +187,6 @@ function testLoginConfig(btn) {
     btn.classList.add('loading');
     btn.disabled = true;
     resultEl.classList.add('hidden');
-    resultEl.innerHTML = '';
 
     fetch('/auth-profiles/test-login', { method: 'POST', body: data })
         .then(function(r) { return r.json(); })
@@ -317,16 +197,13 @@ function testLoginConfig(btn) {
             if (res.ok) {
                 resultEl.innerHTML =
                     '<div class="alert alert-success p-2 text-xs gap-2 rounded-lg">' +
-                    '<span class="text-base">✅</span>' +
-                    '<div>' +
-                    '<div class="font-semibold">Login succeeded!</div>' +
+                    '<span>✅</span><div><div class="font-semibold">Login succeeded!</div>' +
                     '<div class="font-code opacity-70 mt-0.5 break-all">' + escHtml(res.inject_as) + '</div>' +
                     '</div></div>';
             } else {
                 resultEl.innerHTML =
                     '<div class="alert alert-error p-2 text-xs gap-2 rounded-lg">' +
-                    '<span class="text-base">❌</span>' +
-                    '<div><div class="font-semibold">Login failed</div>' +
+                    '<span>❌</span><div><div class="font-semibold">Login failed</div>' +
                     '<div class="font-code opacity-70 mt-0.5 whitespace-pre-wrap break-all">' + escHtml(res.error) + '</div>' +
                     '</div></div>';
             }
@@ -335,14 +212,11 @@ function testLoginConfig(btn) {
             btn.classList.remove('loading');
             btn.disabled = false;
             resultEl.classList.remove('hidden');
-            resultEl.innerHTML =
-                '<div class="alert alert-error p-2 text-xs">Network error: ' + escHtml(String(err)) + '</div>';
+            resultEl.innerHTML = '<div class="alert alert-error p-2 text-xs">Network error: ' + escHtml(String(err)) + '</div>';
         });
 }
 
 function escHtml(s) {
-    return String(s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,6 +24,7 @@ func SendRequest(c *gin.Context) {
 	body := c.PostForm("body")
 	bodyType := c.PostForm("body_type")
 	authProfileID := c.PostForm("auth_profile_id")
+	collectionID := c.PostForm("collection_id")
 
 	if bodyType == "" {
 		bodyType = "json"
@@ -36,6 +38,23 @@ func SendRequest(c *gin.Context) {
 	paramKeys := c.PostFormArray("param_key[]")
 	paramVals := c.PostFormArray("param_val[]")
 
+	// ── 1b. Expand {{VARIABLE}} placeholders (global → env → collection) ──
+	rawURL = expandVariablesCtx(rawURL, collectionID)
+	body = expandVariablesCtx(body, collectionID)
+	for i := range headerVals {
+		headerVals[i] = expandVariablesCtx(headerVals[i], collectionID)
+	}
+	for i := range paramVals {
+		paramVals[i] = expandVariablesCtx(paramVals[i], collectionID)
+	}
+
+	// ── 1c. Inherit collection's default auth if none explicitly selected ─
+	if authProfileID == "" && collectionID != "" {
+		if coll, ok := getCollection(collectionID); ok && coll.AuthProfileID != "" {
+			authProfileID = coll.AuthProfileID
+		}
+	}
+
 	// ── 2. Basic validation ──────────────────────────────────────────────
 	if rawURL == "" {
 		c.HTML(200, "response.html", gin.H{"Error": "Please enter a URL."})
@@ -43,6 +62,22 @@ func SendRequest(c *gin.Context) {
 	}
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
 		rawURL = "https://" + rawURL
+	}
+
+	// Detect unresolved variable placeholders after expansion — give a clear hint.
+	if strings.Contains(rawURL, "{") {
+		import_re := regexp.MustCompile(`\{+([A-Za-z_][A-Za-z0-9_]*)\}+`)
+		if m := import_re.FindString(rawURL); m != "" {
+			name := strings.Trim(m, "{}")
+			c.HTML(200, "response.html", gin.H{
+				"Error": fmt.Sprintf(
+					"URL contains unresolved variable placeholder: %s\n\n"+
+						"→ Define \"%s\" in the { } Vars panel, or check the spelling.\n"+
+						"→ Use {{%s}} (double braces) or {%s} (single braces) — both work.",
+					m, name, name, name),
+			})
+			return
+		}
 	}
 
 	// ── 3. Append query params to the URL ────────────────────────────────
@@ -80,7 +115,7 @@ func SendRequest(c *gin.Context) {
 	}
 
 	// ── 5. Inject auth profile (overrides any matching manual header) ─────
-	if err := injectAuth(req, authProfileID); err != nil {
+	if err := injectAuth(req, authProfileID, false); err != nil {
 		c.HTML(200, "response.html", gin.H{"Error": fmt.Sprintf("Auth error: %s", err.Error())})
 		return
 	}
@@ -95,6 +130,43 @@ func SendRequest(c *gin.Context) {
 		c.HTML(200, "response.html", gin.H{"Error": fmt.Sprintf("Request failed: %s", err.Error())})
 		return
 	}
+
+	// ── 6b. Auto-retry on 401 ────────────────────────────────────────────
+	// The cached token may have been invalidated server-side before our local
+	// ExpiresAt. Force-refresh the token and retry exactly once, transparently.
+	if resp.StatusCode == 401 && authProfileID != "" {
+		if _, ok := getAuthProfile(authProfileID); ok {
+			resp.Body.Close() // done with the original 401 body
+
+			var retryBodyReader io.Reader
+			if body != "" {
+				retryBodyReader = bytes.NewBufferString(body)
+			}
+			retryReq, buildErr := http.NewRequest(method, rawURL, retryBodyReader)
+			if buildErr != nil {
+				c.HTML(200, "response.html", gin.H{"Error": fmt.Sprintf("Retry build failed: %s", buildErr.Error())})
+				return
+			}
+			for i, k := range headerKeys {
+				if k != "" && i < len(headerVals) {
+					retryReq.Header.Set(k, headerVals[i])
+				}
+			}
+			if authErr := injectAuth(retryReq, authProfileID, true); authErr != nil {
+				c.HTML(200, "response.html", gin.H{"Error": fmt.Sprintf("Token refresh failed: %s", authErr.Error())})
+				return
+			}
+			retryStart := time.Now()
+			retryResp, retryErr := client.Do(retryReq)
+			if retryErr != nil {
+				c.HTML(200, "response.html", gin.H{"Error": fmt.Sprintf("Retry after token refresh failed: %s", retryErr.Error())})
+				return
+			}
+			resp = retryResp
+			duration = time.Since(retryStart)
+		}
+	}
+
 	defer resp.Body.Close()
 
 	// ── 7. Read and pretty-print the response body ────────────────────────
@@ -166,17 +238,10 @@ func SendRequest(c *gin.Context) {
 
 	c.Header("HX-Trigger", "historyUpdated")
 
-	// ── 12. 401 auth suggestion ───────────────────────────────────────────
-	authSuggestion := ""
+	// ── 12. 401 — suggest Token API profiles if any exist ────────────────
 	var suggestedProfiles []AuthProfile
 	if resp.StatusCode == 401 {
-		authSuggestion = suggestAuthType(respHeaders, formattedBody)
-		// Pre-filter matching profiles so the template doesn't need cross-scope vars
-		for _, p := range loadAuthProfiles() {
-			if p.Type == authSuggestion {
-				suggestedProfiles = append(suggestedProfiles, p)
-			}
-		}
+		suggestedProfiles = loadAuthProfiles()
 	}
 
 	// ── 13. Render the response panel ─────────────────────────────────────
@@ -191,7 +256,6 @@ func SendRequest(c *gin.Context) {
 		"IsJSON":            isJSON,
 		"Truncated":         truncated,
 		"URL":               rawURL,
-		"AuthSuggestion":    authSuggestion,
 		"SuggestedProfiles": suggestedProfiles,
 	})
 }

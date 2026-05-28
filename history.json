@@ -1,6 +1,6 @@
 [
   {
-    "id": "1779833552210915000",
+    "id": "1779903056306885000",
     "method": "POST",
     "url": "https://restful-booker.herokuapp.com/auth",
     "headers": [
@@ -13,11 +13,11 @@
     "body": "{\n    \"username\" : \"admin\",\n    \"password\" : \"password123\"\n}",
     "body_type": "json",
     "status": 200,
-    "duration": "136ms",
-    "created_at": "May 26, 6:12 PM"
+    "duration": "42ms",
+    "created_at": "May 27, 1:30 PM"
   },
   {
-    "id": "1779833142161810000",
+    "id": "1779903051208609000",
     "method": "POST",
     "url": "https://restful-booker.herokuapp.com/auth",
     "headers": [
@@ -30,31 +30,41 @@
     "body": "{\n    \"username\" : \"admin\",\n    \"password\" : \"password123\"\n}",
     "body_type": "json",
     "status": 200,
-    "duration": "139ms",
-    "created_at": "May 26, 6:05 PM"
+    "duration": "309ms",
+    "created_at": "May 27, 1:30 PM"
   },
   {
-    "id": "1779824473732317000",
-    "method": "GET",
-    "url": "https://httpbin.org/status/401",
-    "headers": null,
+    "id": "1779902883393572000",
+    "method": "POST",
+    "url": "https://restful-booker.herokuapp.com/auth",
+    "headers": [
+      {
+        "Key": "Content-Type",
+        "Val": "application/json"
+      }
+    ],
     "params": null,
-    "body": "",
-    "body_type": "json",
-    "status": 401,
-    "duration": "135ms",
-    "created_at": "May 26, 3:41 PM"
-  },
-  {
-    "id": "1779824473570502000",
-    "method": "GET",
-    "url": "https://httpbin.org/get",
-    "headers": null,
-    "params": null,
-    "body": "",
+    "body": "{\n    \"username\" : \"admin\",\n    \"password\" : \"password123\"\n}",
     "body_type": "json",
     "status": 200,
-    "duration": "764ms",
-    "created_at": "May 26, 3:41 PM"
+    "duration": "475ms",
+    "created_at": "May 27, 1:28 PM"
+  },
+  {
+    "id": "1779894545321978000",
+    "method": "POST",
+    "url": "https://restful-booker.herokuapp.com/auth",
+    "headers": [
+      {
+        "Key": "Content-Type",
+        "Val": "application/json"
+      }
+    ],
+    "params": null,
+    "body": "{\n    \"username\" : \"admin\",\n    \"password\" : \"password123\"\n}",
+    "body_type": "json",
+    "status": 200,
+    "duration": "145ms",
+    "created_at": "May 27, 11:09 AM"
   }
 ]

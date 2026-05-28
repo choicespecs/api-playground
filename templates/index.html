@@ -36,7 +36,7 @@
         <span class="text-xs text-base-content/30">lite postman</span>
 
         <!-- Auth Profiles button -->
-        <button class="btn btn-ghost btn-xs ml-2 gap-1 border border-base-300"
+        <button class="btn btn-ghost btn-xs gap-1 border border-base-300"
                 onclick="loadAndOpenAuthModal()">
             🔐 Auth
         </button>
@@ -44,124 +44,191 @@
         <span class="htmx-indicator loading loading-spinner loading-xs text-primary ml-auto"></span>
     </div>
 
-    <!-- ── Three-column workspace ── -->
+    <!-- ── Workspace ── -->
     <div class="flex flex-1 overflow-hidden">
 
         <!-- ══════════════════════════════════
-             HISTORY SIDEBAR (left)
+             LEFT SIDEBAR — History | Collections
         ══════════════════════════════════ -->
         <aside class="w-52 shrink-0 bg-base-200 border-r border-base-300 flex flex-col overflow-hidden">
 
-            <!-- Header row -->
-            <div class="px-3 py-2 text-xs font-semibold uppercase tracking-widest
-                        text-base-content/40 border-b border-base-300 shrink-0 flex items-center justify-between">
-                <span>⏱ History</span>
-                <div class="flex items-center gap-0.5">
-                    <!-- Export -->
-                    <a href="/history/export"
-                       class="btn btn-ghost btn-xs px-1.5 min-h-0 h-6 opacity-50 hover:opacity-100"
-                       title="Export history as JSON"
-                       download>
-                        ⬇
-                    </a>
-                    <!-- Import trigger -->
-                    <label for="import-file-input"
-                           class="btn btn-ghost btn-xs px-1.5 min-h-0 h-6 opacity-50 hover:opacity-100 cursor-pointer"
-                           title="Import history from JSON">
-                        ⬆
-                    </label>
+            <!-- Tab switcher -->
+            <div class="flex shrink-0 border-b border-base-300">
+                <button id="sidebar-tab-history"
+                        class="flex-1 text-xs py-2 border-b-2 border-primary text-primary font-semibold transition-colors"
+                        onclick="switchSidebarTab('history')">⏱ History</button>
+                <button id="sidebar-tab-collections"
+                        class="flex-1 text-xs py-2 border-b-2 border-transparent text-base-content/40 hover:text-base-content/70 transition-colors"
+                        onclick="switchSidebarTab('collections')">📁 Collections</button>
+            </div>
+
+            <!-- ── History panel ── -->
+            <div id="sidebar-history" class="flex flex-col flex-1 overflow-hidden">
+
+                <div class="px-3 py-1.5 text-xs font-semibold uppercase tracking-widest
+                            text-base-content/40 border-b border-base-300 shrink-0 flex items-center justify-between">
+                    <span>History</span>
+                    <div class="flex items-center gap-0.5">
+                        <a href="/history/export"
+                           class="btn btn-ghost btn-xs px-1.5 min-h-0 h-6 opacity-50 hover:opacity-100"
+                           title="Export history as JSON" download>⬇</a>
+                        <label for="import-file-input"
+                               class="btn btn-ghost btn-xs px-1.5 min-h-0 h-6 opacity-50 hover:opacity-100 cursor-pointer"
+                               title="Import history from JSON">⬆</label>
+                    </div>
+                </div>
+
+                <form id="import-form" hx-post="/history/import" hx-encoding="multipart/form-data" hx-swap="none" class="hidden">
+                    <input type="file" id="import-file-input" name="import_file" accept=".json"
+                           onchange="document.getElementById('import-form').dispatchEvent(new Event('submit',{bubbles:true})); this.value=''">
+                </form>
+
+                <div class="px-2 py-1.5 border-b border-base-300 shrink-0">
+                    <input type="search" placeholder="🔍 Search…"
+                           class="input input-xs input-bordered w-full bg-base-100"
+                           oninput="filterHistory(this.value)" />
+                </div>
+
+                <div id="history-list-container" class="overflow-y-auto flex-1"
+                     hx-get="/history-panel"
+                     hx-trigger="load, historyUpdated from:body"
+                     hx-swap="innerHTML">
+                    <div class="flex items-center justify-center h-16 text-base-content/20 text-xs">Loading…</div>
                 </div>
             </div>
 
-            <!-- Hidden import form — triggered by file input change -->
-            <form id="import-form"
-                  hx-post="/history/import"
-                  hx-encoding="multipart/form-data"
-                  hx-swap="none"
-                  class="hidden">
-                <input type="file" id="import-file-input" name="import_file" accept=".json"
-                       onchange="document.getElementById('import-form').dispatchEvent(new Event('submit', {bubbles:true})); this.value=''">
-            </form>
+            <!-- ── Collections panel ── -->
+            <div id="sidebar-collections" class="hidden flex-col flex-1 overflow-hidden">
 
-            <!-- Search box -->
-            <div class="px-2 py-1.5 border-b border-base-300 shrink-0">
-                <input type="search"
-                       placeholder="🔍 Search…"
-                       class="input input-xs input-bordered w-full bg-base-100"
-                       oninput="filterHistory(this.value)" />
-            </div>
+                <div class="px-2 py-1.5 border-b border-base-300 shrink-0">
+                    <form hx-post="/collections" hx-swap="none" class="flex gap-1">
+                        <input type="text" name="name" placeholder="New collection…"
+                               class="input input-xs input-bordered flex-1 bg-base-100" />
+                        <button type="submit"
+                                class="btn btn-primary btn-xs px-2 shrink-0"
+                                title="Create collection">+</button>
+                    </form>
+                </div>
 
-            <!-- History list -->
-            <div id="history-list-container"
-                 class="overflow-y-auto flex-1"
-                 hx-get="/history-panel"
-                 hx-trigger="load, historyUpdated from:body"
-                 hx-swap="innerHTML">
-                <div class="flex items-center justify-center h-16 text-base-content/20 text-xs">
-                    Loading…
+                <div id="collections-list" class="overflow-y-auto flex-1"
+                     hx-get="/collections-panel"
+                     hx-trigger="load, collectionsUpdated from:body"
+                     hx-swap="innerHTML">
+                    <div class="flex items-center justify-center h-16 text-base-content/20 text-xs">Loading…</div>
                 </div>
             </div>
+
         </aside>
 
         <!-- ══════════════════════════════════
-             REQUEST PANEL (middle)
+             CENTER — Request (top) + Response (bottom)
         ══════════════════════════════════ -->
-        <div class="flex-1 flex flex-col overflow-hidden border-r border-base-300 min-w-0">
+        <div id="center-col" class="flex-1 flex flex-col overflow-hidden min-w-0">
 
-            <!-- ── Request toolbar ── -->
-            <div class="px-3 py-2 border-b border-base-300 bg-base-200/30 flex items-center gap-2 shrink-0">
-                <button onclick="openImportModal()"
-                        class="btn btn-ghost btn-xs gap-1.5 border border-base-300 hover:border-primary hover:text-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                    Import
-                </button>
-                <div class="flex-1"></div>
-                <button onclick="openGenerateCurlModal()"
-                        class="btn btn-ghost btn-xs gap-1.5 border border-base-300 font-code hover:border-secondary hover:text-secondary">
-                    &lt;/&gt; curl
-                </button>
+            <!-- ── REQUEST AREA (top half) ── -->
+            <div id="request-area" class="flex flex-col overflow-hidden" style="height: 50%">
+
+                <!-- Toolbar -->
+                <div class="px-3 py-2 border-b border-base-300 bg-base-200/30 flex items-center gap-2 shrink-0">
+                    <button onclick="openImportModal()"
+                            class="btn btn-ghost btn-xs gap-1.5 border border-base-300 hover:border-primary hover:text-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        Import
+                    </button>
+                    <div class="flex-1"></div>
+                    <button onclick="openSaveToCollectionModal()"
+                            class="btn btn-ghost btn-xs gap-1.5 border border-base-300 hover:border-success hover:text-success"
+                            title="Save request to a collection">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                        Save
+                    </button>
+                    <button onclick="openGenerateCurlModal()"
+                            class="btn btn-ghost btn-xs gap-1.5 border border-base-300 font-code hover:border-secondary hover:text-secondary">
+                        &lt;/&gt; curl
+                    </button>
+                </div>
+
+                <!-- Request form -->
+                {{ template "form.html" . }}
+
+                <!-- Send button -->
+                <div class="px-3 py-2 border-t border-base-300 bg-base-200/50 shrink-0">
+                    <button
+                        class="btn btn-primary w-full gap-2"
+                        hx-post="/send"
+                        hx-target="#response-body"
+                        hx-swap="innerHTML"
+                        hx-include="#request-form"
+                        hx-indicator=".htmx-indicator">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                        </svg>
+                        Send Request
+                    </button>
+                </div>
+
             </div>
 
-            <!-- Request form -->
-            {{ template "form.html" . }}
+            <!-- ── DRAG HANDLE ── -->
+            <div id="split-handle"
+                 class="shrink-0 h-1.5 cursor-row-resize bg-base-300 hover:bg-primary/40 active:bg-primary/60 transition-colors relative group"
+                 title="Drag to resize">
+                <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-px bg-base-content/10 group-hover:bg-primary/30 pointer-events-none"></div>
+            </div>
 
-            <!-- Send button -->
-            <div class="p-3 border-t border-base-300 bg-base-200/50 shrink-0">
-                <button
-                    class="btn btn-primary w-full gap-2"
-                    hx-post="/send"
-                    hx-target="#response-body"
-                    hx-swap="innerHTML"
-                    hx-include="#request-form"
-                    hx-indicator=".htmx-indicator">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
-                    </svg>
-                    Send Request
-                </button>
+            <!-- ── RESPONSE AREA (bottom half) ── -->
+            <div id="response-area" class="flex flex-col overflow-hidden min-h-0 flex-1">
+
+                <!-- Response label (hidden once first response arrives) -->
+                <div id="response-empty-header"
+                     class="px-4 py-1.5 border-b border-base-300 bg-base-200/30 shrink-0 flex items-center gap-2">
+                    <span class="text-xs font-semibold uppercase tracking-widest text-base-content/30">Response</span>
+                    <span class="text-xs text-base-content/20">— hit Send to see output here</span>
+                </div>
+
+                <div id="response-body" class="flex-1 flex flex-col overflow-hidden min-h-0">
+                    <div class="flex-1 flex items-center justify-center">
+                        <div class="text-center text-base-content/15">
+                            <div class="text-5xl mb-3">📭</div>
+                            <div class="text-sm">Hit Send to see the response</div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
         </div>
 
         <!-- ══════════════════════════════════
-             RESPONSE PANEL (right)
+             RIGHT PANEL — Active Variables
         ══════════════════════════════════ -->
-        <div class="flex-1 flex flex-col overflow-hidden min-w-0">
-            <div class="px-4 py-2 border-b border-base-300 bg-base-200/50 shrink-0">
-                <span class="text-xs font-semibold uppercase tracking-widest text-base-content/40">
-                    Response
-                </span>
+        <aside class="w-52 shrink-0 bg-base-200 border-l border-base-300 flex flex-col overflow-hidden">
+
+            <!-- Header -->
+            <div class="px-3 py-1.5 shrink-0 border-b border-base-300">
+                <span class="text-xs font-semibold uppercase tracking-widest text-base-content/40">Variables</span>
+                <button onclick="loadAndOpenVarsModal()"
+                        class="btn btn-ghost btn-xs px-1.5 min-h-0 h-6 text-base-content/40 hover:text-primary font-code"
+                        title="Manage variables">+ Add</button>
             </div>
 
-            <div id="response-body" class="flex-1 flex items-center justify-center overflow-auto">
-                <div class="text-center text-base-content/20">
-                    <div class="text-4xl mb-3">📭</div>
-                    <div class="text-sm">Hit Send to see the response</div>
-                </div>
+            <!-- Variable list — JS-rendered -->
+            <div id="vars-panel" class="overflow-y-auto flex-1 p-2 flex flex-col gap-1">
+                <p class="text-xs text-base-content/20 italic text-center mt-4">Loading…</p>
             </div>
-        </div>
+
+            <!-- Hint -->
+            <div class="px-3 py-2 shrink-0 border-t border-base-300">
+                <p class="text-xs text-base-content/25 leading-relaxed">
+                    Use <code class="font-code">{{ printf "{{" }}NAME}}</code> in any field.
+                </p>
+            </div>
+
+        </aside>
 
     </div><!-- end workspace -->
 
@@ -277,13 +344,105 @@
     </dialog>
 
     <!-- ══════════════════════════════════
+         SAVE TO COLLECTION MODAL
+    ══════════════════════════════════ -->
+    <dialog id="save-collection-modal" class="modal">
+        <div class="modal-box w-11/12 max-w-md">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-lg flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+                    </svg>
+                    Save to Collection
+                </h3>
+                <form method="dialog"><button class="btn btn-sm btn-ghost btn-circle">✕</button></form>
+            </div>
+
+            <div class="flex flex-col gap-3">
+                <div>
+                    <label class="label py-1"><span class="label-text text-xs">Request Name</span></label>
+                    <input type="text" id="save-request-name" placeholder="GET Users"
+                           class="input input-sm input-bordered w-full" />
+                </div>
+                <div>
+                    <label class="label py-1">
+                        <span class="label-text text-xs">Collection</span>
+                        <span class="label-text-alt text-xs opacity-40">
+                            <a onclick="switchSidebarTab('collections'); document.getElementById('save-collection-modal').close()"
+                               class="link link-hover">+ New collection</a>
+                        </span>
+                    </label>
+                    <select id="save-collection-select" class="select select-sm select-bordered w-full"
+                            hx-get="/collections/options"
+                            hx-trigger="load, collectionsUpdated from:body"
+                            hx-swap="innerHTML">
+                        <option>Loading…</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Hidden snapshot field — populated by JS before modal opens -->
+            <textarea id="save-snapshot" class="hidden"></textarea>
+
+            <div id="save-result" class="hidden mt-3"></div>
+
+            <div class="flex justify-end gap-2 mt-4">
+                <form method="dialog"><button class="btn btn-ghost btn-sm">Cancel</button></form>
+                <button type="button" onclick="submitSaveToCollection(this)"
+                        class="btn btn-success btn-sm gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Save
+                </button>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <!-- ══════════════════════════════════
+         COLLECTION SETTINGS MODAL
+    ══════════════════════════════════ -->
+    <dialog id="coll-settings-modal" class="modal">
+        <div class="modal-box w-11/12 max-w-xl">
+            <div id="coll-settings-content">
+                <div class="flex items-center justify-center h-24 text-base-content/30">
+                    <span class="loading loading-spinner loading-sm mr-2"></span>
+                    Loading…
+                </div>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <!-- ══════════════════════════════════
+         VARIABLES MODAL
+    ══════════════════════════════════ -->
+    <dialog id="vars-modal" class="modal">
+        <div class="modal-box w-11/12 max-w-xl">
+            <div id="vars-modal-content"
+                 hx-get="/variables"
+                 hx-trigger="load, variablesUpdated from:body"
+                 hx-swap="innerHTML">
+                <div class="flex items-center justify-center h-24 text-base-content/30">
+                    <span class="loading loading-spinner loading-sm mr-2"></span>
+                    Loading…
+                </div>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+            <button>close</button>
+        </form>
+    </dialog>
+
+    <!-- ══════════════════════════════════
          AUTH PROFILES MODAL
     ══════════════════════════════════ -->
     <dialog id="auth-modal" class="modal">
         <div class="modal-box w-11/12 max-w-xl">
             <div id="auth-modal-content"
                  hx-get="/auth-profiles"
-                 hx-trigger="load"
+                 hx-trigger="load, authProfilesUpdated from:body"
                  hx-swap="innerHTML">
                 <div class="flex items-center justify-center h-24 text-base-content/30">
                     <span class="loading loading-spinner loading-sm mr-2"></span>
@@ -499,6 +658,763 @@
         var sel = document.getElementById('auth-select');
         if (sel && e.detail.elt === sel) {
             sel.value = sel.dataset.selected || '';
+        }
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // VARIABLES — modal + client-side URL preview + quickbar + autocomplete
+    // ══════════════════════════════════════════════════════════════════════
+
+    var _varsMap      = {}; // {NAME: value} merged map — used for autocomplete/quickbar/preview
+    var _varsFull     = []; // [{id, name, value}] global list — used for panel (has IDs for delete)
+    var _collVarsFull = []; // [{id, name, value}] active collection vars — for panel delete/edit
+
+    // Tracks the collection whose vars are shown in the right panel.
+    // Updated when a collection is expanded or a saved request is loaded.
+    var _activeCollID = '';
+
+    function refreshVarsMap() {
+        // Prefer the explicitly tracked active collection; fall back to the
+        // hidden input that gets set when a saved request is loaded into the form.
+        var collID = _activeCollID ||
+                     (document.getElementById('current-collection-id') || {}).value || '';
+
+        // Merged map (global + collection) — for autocomplete / quickbar / URL preview
+        var mapUrl = '/variables/map' + (collID ? '?collection_id=' + encodeURIComponent(collID) : '');
+        fetch(mapUrl)
+            .then(function(r) { return r.json(); })
+            .then(function(m) {
+                _varsMap = m;
+                updateVarPreview();
+                updateVarsQuickbar();
+                updateVarsPanel(); // update panel once map is ready (may run before _varsFull)
+            })
+            .catch(function() {});
+
+        // Full global list with IDs — for the right panel (delete needs the ID)
+        fetch('/variables/list')
+            .then(function(r) { return r.json(); })
+            .then(function(list) {
+                _varsFull = list || [];
+                updateVarsPanel();
+            })
+            .catch(function() {});
+
+        // Collection vars list with IDs — for inline delete/edit in panel
+        if (collID) {
+            fetch('/collections/' + encodeURIComponent(collID) + '/variables')
+                .then(function(r) { return r.json(); })
+                .then(function(list) {
+                    _collVarsFull = list || [];
+                    updateVarsPanel();
+                })
+                .catch(function() {});
+        } else {
+            _collVarsFull = [];
+        }
+    }
+
+    // Client-side expansion used only for the live URL preview.
+    // Authoritative expansion always happens server-side.
+    function expandVarsPreview(s) {
+        return s.replace(/\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g, function(match, name) {
+            return _varsMap.hasOwnProperty(name) ? _varsMap[name] : match;
+        });
+    }
+
+    function updateVarPreview(val) {
+        var urlInput = document.querySelector('input[name="url"]');
+        var previewEl = document.getElementById('url-var-preview');
+        if (!urlInput || !previewEl) return;
+        var raw = (val !== undefined) ? val : urlInput.value;
+        if (raw && raw.includes('{' + '{')) {
+            var expanded = expandVarsPreview(raw);
+            if (expanded !== raw) {
+                previewEl.textContent = '↳ ' + expanded;
+                previewEl.classList.remove('hidden');
+                return;
+            }
+        }
+        previewEl.classList.add('hidden');
+    }
+
+    // ── Variables quickbar ─────────────────────────────────────────────────
+    // Renders variable chips below the URL input. Clicking a chip inserts
+    // the token at the cursor position in whichever input is focused.
+
+    function updateVarsQuickbar() {
+        var bar = document.getElementById('vars-quickbar');
+        if (!bar) return;
+        var names = Object.keys(_varsMap);
+        if (!names.length) {
+            bar.classList.add('hidden');
+            bar.classList.remove('flex');
+            return;
+        }
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+        bar.innerHTML = '<span class="text-base-content/25 text-xs mr-0.5 self-center shrink-0">vars:</span>' +
+            names.map(function(n) {
+                var val = _varsMap[n] || '';
+                var tip = val ? n + ' → ' + val : n + ' (empty)';
+                return '<button type="button" ' +
+                    'onclick="insertVarToken(\'' + n + '\')" ' +
+                    'title="' + tip.replace(/"/g, '&quot;') + '" ' +
+                    'class="font-code text-xs bg-primary/10 text-primary/80 hover:bg-primary/25 ' +
+                    'active:scale-95 px-1.5 py-0.5 rounded transition-all cursor-pointer select-none">' +
+                    '{' + '{' + n + '}' + '}' + '</button>';
+            }).join('');
+    }
+
+    // ── Right panel: active variables ─────────────────────────────────────
+    // Uses _varsFull (has IDs) for global vars so we can delete them,
+    // and _varsMap for collection-overridden values and collection-only vars.
+
+    function updateVarsPanel() {
+        var panel = document.getElementById('vars-panel');
+        if (!panel) return;
+
+        // Build id maps for fast lookup
+        var globalIdByName = {};
+        (_varsFull || []).forEach(function(v) { globalIdByName[v.name] = v.id; });
+
+        var collIdByName = {};
+        (_collVarsFull || []).forEach(function(v) { collIdByName[v.name] = v.id; });
+
+        var allNames = Object.keys(_varsMap);
+
+        if (!allNames.length && !(_varsFull || []).length) {
+            panel.innerHTML =
+                '<p class="text-xs text-base-content/20 italic text-center mt-6">No variables yet.</p>' +
+                '<div class="flex justify-center mt-2">' +
+                '<button onclick="loadAndOpenVarsModal()" ' +
+                'class="btn btn-ghost btn-xs opacity-40 hover:opacity-100 gap-1">+ Add variable</button>' +
+                '</div>';
+            return;
+        }
+
+        var trashSVG =
+            '<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">' +
+            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" ' +
+            'd="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>' +
+            '</svg>';
+        var copySVG =
+            '<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">' +
+            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" ' +
+            'd="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>' +
+            '</svg>';
+
+        panel.innerHTML = allNames.map(function(n) {
+            var val      = _varsMap[n] || '';
+            var globalID = globalIdByName[n];
+            var collID   = collIdByName[n];
+            // A var is "global" if it exists in the global list (even if overridden by collection)
+            var nSafe    = n.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            var token    = '{' + '{' + n + '}' + '}';
+            var displayVal = val.length > 22 ? val.substring(0, 22) + '…' : (val || '(empty)');
+
+            var deleteBtn;
+            if (globalID) {
+                // Global var — delete from globals
+                deleteBtn = '<button class="shrink-0 text-base-content/30 hover:text-error transition-colors p-0.5" ' +
+                    'onclick="deleteVarFromPanel(\'' + globalID + '\')" title="Delete global variable">' +
+                    trashSVG + '</button>';
+            } else if (collID && _activeCollID) {
+                // Collection-only var — delete from collection
+                deleteBtn = '<button class="shrink-0 text-base-content/30 hover:text-error transition-colors p-0.5" ' +
+                    'onclick="deleteCollVarFromPanel(\'' + _activeCollID + '\',\'' + collID + '\')" title="Delete collection variable">' +
+                    trashSVG + '</button>';
+            } else {
+                deleteBtn = ''; // shouldn't happen
+            }
+
+            // Value row: editable inline
+            var valueRow;
+            if (globalID) {
+                // Editing global vars — PATCH /variables/:id
+                valueRow = '<input type="text" value="' + val.replace(/"/g, '&quot;') + '" ' +
+                    'placeholder="(empty)" ' +
+                    'class="font-code text-xs text-base-content/50 bg-transparent w-full mt-0.5 pl-0.5 ' +
+                    'focus:outline-none focus:text-base-content focus:bg-base-100 rounded px-1 -ml-1" ' +
+                    'data-id="' + globalID + '" data-type="global" ' +
+                    'onblur="saveVarValue(this)" onkeydown="if(event.key===\'Enter\')this.blur()" />';
+            } else if (collID && _activeCollID) {
+                // Editing collection vars — PATCH /collections/:collID/variables/:varID
+                valueRow = '<input type="text" value="' + val.replace(/"/g, '&quot;') + '" ' +
+                    'placeholder="(empty)" ' +
+                    'class="font-code text-xs text-base-content/50 bg-transparent w-full mt-0.5 pl-0.5 ' +
+                    'focus:outline-none focus:text-base-content focus:bg-base-100 rounded px-1 -ml-1" ' +
+                    'data-id="' + collID + '" data-type="coll" data-coll-id="' + _activeCollID + '" ' +
+                    'onblur="saveVarValue(this)" onkeydown="if(event.key===\'Enter\')this.blur()" />';
+            } else {
+                valueRow = '<div class="font-code text-xs text-base-content/35 truncate mt-0.5 pl-0.5">' + displayVal + '</div>';
+            }
+
+            return '<div class="rounded-lg bg-base-100/50 px-2 py-1.5 hover:bg-base-100 transition-colors">' +
+                '<div class="flex items-center gap-1">' +
+                '<span class="font-code text-xs text-primary/80 cursor-pointer hover:text-primary transition-colors flex-1 truncate" ' +
+                'onclick="copyVarPanelToken(this, \'' + nSafe + '\')" ' +
+                'title="Copy ' + token.replace(/"/g, '&quot;') + ' to clipboard">' +
+                token + '</span>' +
+                '<button class="shrink-0 text-base-content/30 hover:text-primary transition-colors p-0.5" ' +
+                'onclick="copyVarPanelToken(this.parentElement.querySelector(\'span.font-code\'), \'' + nSafe + '\')" ' +
+                'title="Copy to clipboard">' + copySVG + '</button>' +
+                deleteBtn +
+                '</div>' +
+                valueRow +
+                '</div>';
+        }).join('');
+    }
+
+    // Copy the variable token to clipboard; briefly flash the chip span.
+    function copyVarPanelToken(chipEl, name) {
+        var token = '{' + '{' + name + '}' + '}';
+        navigator.clipboard.writeText(token).then(function() {
+            var orig = chipEl.textContent;
+            chipEl.textContent = '✓ copied';
+            chipEl.classList.add('text-success');
+            setTimeout(function() {
+                chipEl.textContent = orig;
+                chipEl.classList.remove('text-success');
+            }, 1100);
+        });
+    }
+
+    // Save an edited value from the panel — works for both global and collection vars.
+    function saveVarValue(input) {
+        var newVal = input.value;
+        var origVal = input.dataset.orig !== undefined ? input.dataset.orig : input.defaultValue;
+        if (newVal === origVal) return; // no change
+        input.dataset.orig = newVal;
+
+        var type   = input.dataset.type;   // 'global' or 'coll'
+        var id     = input.dataset.id;
+        var collId = input.dataset.collId;
+
+        var fd = new FormData();
+        fd.append('value', newVal);
+
+        var url = type === 'global'
+            ? '/variables/' + encodeURIComponent(id)
+            : '/collections/' + encodeURIComponent(collId) + '/variables/' + encodeURIComponent(id);
+
+        fetch(url, { method: 'PATCH', body: fd })
+            .then(function() { refreshVarsMap(); })
+            .catch(function() {});
+    }
+
+    // Delete a global variable and refresh everything.
+    function deleteVarFromPanel(id) {
+        fetch('/variables/' + id, { method: 'DELETE' })
+            .then(function() {
+                document.body.dispatchEvent(new Event('variablesUpdated'));
+            })
+            .catch(function() {});
+    }
+
+    // Delete a collection variable and refresh everything.
+    function deleteCollVarFromPanel(collID, varID) {
+        fetch('/collections/' + encodeURIComponent(collID) + '/variables/' + encodeURIComponent(varID),
+              { method: 'DELETE' })
+            .then(function() { refreshVarsMap(); })
+            .catch(function() {});
+    }
+
+    // Insert a variable token at the cursor in the last focused field, or append to URL.
+    var _lastFocusedInput = null;
+    document.addEventListener('focusin', function(e) {
+        var el = e.target;
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+            // Track only request-relevant inputs (not search, modal inputs, etc.)
+            if (el.name === 'url' || el.name === 'header_val[]' ||
+                el.name === 'param_val[]' || el.name === 'body') {
+                _lastFocusedInput = el;
+            }
+        }
+    });
+
+    function insertVarToken(name) {
+        var token = '{' + '{' + name + '}' + '}';
+        var el = _lastFocusedInput;
+        // Verify the element still exists in the DOM
+        if (!el || !document.contains(el)) {
+            el = document.querySelector('input[name="url"]');
+        }
+        if (!el) return;
+        var start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+        var end   = typeof el.selectionEnd   === 'number' ? el.selectionEnd   : el.value.length;
+        el.value = el.value.substring(0, start) + token + el.value.substring(end);
+        var newPos = start + token.length;
+        el.setSelectionRange(newPos, newPos);
+        el.dispatchEvent(new Event('input'));
+        el.focus();
+    }
+
+    // ── Variable autocomplete ──────────────────────────────────────────────
+    // Shows a floating picker when the user types the opening braces in any request field.
+
+    var _varACState = { el: null, insertStart: 0, insertEnd: 0 };
+
+    function _getVarACEl() {
+        var ac = document.getElementById('_var-ac');
+        if (!ac) {
+            ac = document.createElement('div');
+            ac.id = '_var-ac';
+            ac.setAttribute('role', 'listbox');
+            ac.className = 'fixed z-[9999] bg-base-100 border border-base-300 rounded-xl ' +
+                           'shadow-2xl py-1 max-h-52 overflow-y-auto hidden';
+            ac.style.minWidth = '220px';
+            document.body.appendChild(ac);
+        }
+        return ac;
+    }
+
+    function _closeVarAC() {
+        var ac = document.getElementById('_var-ac');
+        if (ac) ac.classList.add('hidden');
+        _varACState.el = null;
+    }
+
+    function _showVarAC(el, insertStart, insertEnd, matches) {
+        _varACState = { el: el, insertStart: insertStart, insertEnd: insertEnd };
+        var ac = _getVarACEl();
+        var rect = el.getBoundingClientRect();
+
+        // Position below the input, aligned to its left edge
+        var top = rect.bottom + 4;
+        var left = rect.left;
+        // Clamp so it doesn't overflow the viewport on the right
+        var maxLeft = window.innerWidth - 240;
+        if (left > maxLeft) left = maxLeft;
+
+        ac.style.top  = top  + 'px';
+        ac.style.left = left + 'px';
+        ac.style.width = Math.max(rect.width, 220) + 'px';
+        ac.classList.remove('hidden');
+
+        ac.innerHTML = matches.map(function(n, i) {
+            var v = _varsMap[n] || '';
+            var preview = v.length > 32 ? v.substring(0, 32) + '…' : v;
+            return '<div role="option" class="var-ac-item flex items-center gap-2 px-3 py-1.5 mx-1 ' +
+                'rounded-lg cursor-pointer transition-colors ' + (i === 0 ? 'bg-primary/15' : 'hover:bg-base-200') + '" ' +
+                'data-varname="' + n + '" ' +
+                'onmousedown="event.preventDefault(); _pickVarAC(\'' + n + '\')">' +
+                '<span class="font-code text-primary/90 text-xs shrink-0">' + '{' + '{' + n + '}' + '}' + '</span>' +
+                (preview ? '<span class="text-base-content/35 text-xs truncate">→ ' + preview + '</span>' : '') +
+                '</div>';
+        }).join('');
+    }
+
+    function _checkVarTrigger(el) {
+        var names = Object.keys(_varsMap);
+        if (!names.length) { _closeVarAC(); return; }
+
+        var val = el.value;
+        var pos = typeof el.selectionStart === 'number' ? el.selectionStart : val.length;
+        var before = val.substring(0, pos);
+
+        // Find the last opening braces before the cursor that haven't been closed
+        var lastOpen = before.lastIndexOf('{' + '{');
+        if (lastOpen === -1) { _closeVarAC(); return; }
+        var between = before.substring(lastOpen + 2);
+        // If there's a closing brace pair between the open and the cursor, we're past it
+        if (between.includes('}' + '}')) { _closeVarAC(); return; }
+
+        var prefix = between;
+        // Allow only identifier chars after the opening braces
+        if (prefix && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(prefix)) { _closeVarAC(); return; }
+
+        var matches = prefix
+            ? names.filter(function(n) { return n.toLowerCase().startsWith(prefix.toLowerCase()); })
+            : names;
+
+        if (!matches.length) { _closeVarAC(); return; }
+
+        _showVarAC(el, lastOpen, pos, matches);
+    }
+
+    function _pickVarAC(name) {
+        var s = _varACState;
+        if (!s.el) return;
+        var el = s.el;
+        var token = '{' + '{' + name + '}' + '}';
+        // Replace from the opening braces to the current cursor position
+        el.value = el.value.substring(0, s.insertStart) + token + el.value.substring(s.insertEnd);
+        var newPos = s.insertStart + token.length;
+        el.setSelectionRange(newPos, newPos);
+        el.dispatchEvent(new Event('input'));
+        _closeVarAC();
+        el.focus();
+    }
+
+    // Event delegation — input events on any request field
+    document.addEventListener('input', function(e) {
+        var el = e.target;
+        if (!el || !el.matches) return;
+        if (el.matches('input[name="url"], input[name="header_val[]"], input[name="param_val[]"], textarea[name="body"]')) {
+            _checkVarTrigger(el);
+        } else {
+            _closeVarAC();
+        }
+    });
+
+    // Keyboard navigation inside the autocomplete
+    document.addEventListener('keydown', function(e) {
+        var ac = document.getElementById('_var-ac');
+        if (!ac || ac.classList.contains('hidden')) return;
+        var items = Array.prototype.slice.call(ac.querySelectorAll('.var-ac-item'));
+        if (!items.length) return;
+
+        var activeIdx = items.findIndex(function(it) { return it.classList.contains('bg-primary/15'); });
+
+        if (e.key === 'Escape') {
+            e.preventDefault(); _closeVarAC(); return;
+        }
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            var next = Math.min(activeIdx + 1, items.length - 1);
+            items.forEach(function(it, i) {
+                it.classList.toggle('bg-primary/15', i === next);
+                it.classList.toggle('hover:bg-base-200', i !== next);
+            });
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            var prev = Math.max(activeIdx - 1, 0);
+            items.forEach(function(it, i) {
+                it.classList.toggle('bg-primary/15', i === prev);
+                it.classList.toggle('hover:bg-base-200', i !== prev);
+            });
+            return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+            var active = ac.querySelector('.var-ac-item.bg-primary\\/15');
+            if (active) {
+                e.preventDefault();
+                _pickVarAC(active.dataset.varname);
+            }
+        }
+    }, true); // capture phase so we intercept before HTMX keydown handlers
+
+    // Close autocomplete when focus leaves a request field
+    document.addEventListener('focusout', function() {
+        setTimeout(function() {
+            var ac = document.getElementById('_var-ac');
+            if (!ac || ac.classList.contains('hidden')) return;
+            var focused = document.activeElement;
+            if (focused && focused.id === '_var-ac') return;
+            if (focused && ac.contains(focused)) return;
+            _closeVarAC();
+        }, 120);
+    });
+
+    // Close autocomplete when clicking elsewhere
+    document.addEventListener('click', function(e) {
+        var ac = document.getElementById('_var-ac');
+        if (ac && !ac.classList.contains('hidden') && !ac.contains(e.target)) {
+            _closeVarAC();
+        }
+    });
+
+    function loadAndOpenVarsModal() {
+        htmx.trigger(document.getElementById('vars-modal-content'), 'load');
+        document.getElementById('vars-modal').showModal();
+    }
+
+    // Refresh the client-side map whenever variables or collection variables change
+    document.body.addEventListener('variablesUpdated', refreshVarsMap);
+    document.body.addEventListener('collectionsUpdated', refreshVarsMap);
+
+    // Refresh preview + quickbar after HTMX swaps the form (history load, import, etc.)
+    document.body.addEventListener('htmx:afterSettle', function(e) {
+        updateVarPreview();
+        updateVarsQuickbar();
+        // Hide the "hit Send" header row once a response has been swapped in
+        if (e.detail && e.detail.target && e.detail.target.id === 'response-body') {
+            var hdr = document.getElementById('response-empty-header');
+            if (hdr) hdr.classList.add('hidden');
+        }
+    });
+
+    // Initial load
+    refreshVarsMap();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SIDEBAR TAB SWITCHING
+    // ══════════════════════════════════════════════════════════════════════
+
+    function switchSidebarTab(tab) {
+        var isHistory = tab === 'history';
+
+        // Panels
+        var histPanel = document.getElementById('sidebar-history');
+        var collPanel = document.getElementById('sidebar-collections');
+        if (histPanel) histPanel.classList.toggle('hidden', !isHistory);
+        if (collPanel) collPanel.classList.toggle('hidden', isHistory);
+
+        // Tab buttons
+        var histBtn = document.getElementById('sidebar-tab-history');
+        var collBtn = document.getElementById('sidebar-tab-collections');
+        if (histBtn) {
+            histBtn.classList.toggle('border-primary', isHistory);
+            histBtn.classList.toggle('text-primary', isHistory);
+            histBtn.classList.toggle('font-semibold', isHistory);
+            histBtn.classList.toggle('border-transparent', !isHistory);
+            histBtn.classList.toggle('text-base-content/40', !isHistory);
+        }
+        if (collBtn) {
+            collBtn.classList.toggle('border-primary', !isHistory);
+            collBtn.classList.toggle('text-primary', !isHistory);
+            collBtn.classList.toggle('font-semibold', !isHistory);
+            collBtn.classList.toggle('border-transparent', isHistory);
+            collBtn.classList.toggle('text-base-content/40', isHistory);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // COLLECTIONS — load request / delete request
+    // ══════════════════════════════════════════════════════════════════════
+
+    function loadCollReq(collID, reqID) {
+        _activeCollID = collID; // keep vars panel in sync with the loaded request's collection
+        htmx.ajax('GET', '/collections/' + collID + '/requests/' + reqID, {
+            target: '#request-form',
+            swap:   'outerHTML'
+        });
+    }
+
+    function deleteCollReq(collID, reqID) {
+        fetch('/collections/' + collID + '/requests/' + reqID, { method: 'DELETE' })
+            .then(function() {
+                document.body.dispatchEvent(new Event('collectionsUpdated'));
+            });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // COLLECTIONS — toggle expand / collapse
+    // ══════════════════════════════════════════════════════════════════════
+
+    var _collExpanded = {}; // {collID: true|false}
+
+    function toggleColl(id) {
+        _collExpanded[id] = !_collExpanded[id];
+        _applyCollState(id);
+        // Show this collection's vars in the right panel when expanded;
+        // revert to global-only when collapsed.
+        _activeCollID = _collExpanded[id] ? id : '';
+        refreshVarsMap();
+    }
+
+    function _applyCollState(id) {
+        var list  = document.getElementById('coll-reqs-' + id);
+        var arrow = document.getElementById('coll-arrow-' + id);
+        var open  = !!_collExpanded[id];
+        if (list)  list.classList.toggle('hidden', !open);
+        if (arrow) arrow.classList.toggle('rotate-90', open);
+    }
+
+    // Re-apply expanded state after HTMX re-renders the collections list
+    document.body.addEventListener('htmx:afterSettle', function(e) {
+        var collList = document.getElementById('collections-list');
+        if (collList && (collList === e.detail.elt || collList.contains(e.detail.elt))) {
+            Object.keys(_collExpanded).forEach(function(id) {
+                if (_collExpanded[id]) _applyCollState(id);
+            });
+        }
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SAVE TO COLLECTION MODAL
+    // ══════════════════════════════════════════════════════════════════════
+
+    function _collectFormSnapshot() {
+        var method   = (document.querySelector('select[name="method"]')        || {}).value || 'GET';
+        var url      = (document.querySelector('input[name="url"]')             || {}).value || '';
+        var body     = (document.querySelector('textarea[name="body"]')         || {}).value || '';
+        var bodyType = (document.getElementById('body-type-select')             || {}).value || 'json';
+        var authID   = (document.querySelector('select[name="auth_profile_id"]')|| {}).value || '';
+
+        // Collect headers — skip blank keys
+        var headers = [];
+        document.querySelectorAll('#headers-body tr').forEach(function(row) {
+            var k = (row.querySelector('[name="header_key[]"]') || {}).value || '';
+            var v = (row.querySelector('[name="header_val[]"]') || {}).value || '';
+            if (k.trim()) headers.push({ Key: k.trim(), Val: v });
+        });
+
+        // Collect params — skip blank keys
+        var params = [];
+        document.querySelectorAll('#params-body tr').forEach(function(row) {
+            var k = (row.querySelector('[name="param_key[]"]') || {}).value || '';
+            var v = (row.querySelector('[name="param_val[]"]') || {}).value || '';
+            if (k.trim()) params.push({ Key: k.trim(), Val: v });
+        });
+
+        return {
+            method:         method,
+            url:            url,
+            headers:        headers,
+            params:         params,
+            body:           body,
+            body_type:      bodyType,
+            auth_profile_id: authID
+        };
+    }
+
+    function openSaveToCollectionModal() {
+        var snap = _collectFormSnapshot();
+        document.getElementById('save-snapshot').value = JSON.stringify(snap);
+
+        // Pre-fill a request name from method + URL host
+        var nameInput = document.getElementById('save-request-name');
+        if (nameInput && !nameInput.value) {
+            try {
+                var host = snap.url ? new URL(snap.url.match(/^https?:\/\//) ? snap.url : 'https://' + snap.url).pathname : '';
+                nameInput.value = snap.method + (host && host !== '/' ? ' ' + host : '');
+            } catch(e) {
+                nameInput.value = snap.method + ' Request';
+            }
+        }
+
+        // Clear previous result message
+        var resultEl = document.getElementById('save-result');
+        if (resultEl) { resultEl.classList.add('hidden'); resultEl.textContent = ''; }
+
+        document.getElementById('save-collection-modal').showModal();
+    }
+
+    function submitSaveToCollection(btn) {
+        var collID  = (document.getElementById('save-collection-select') || {}).value || '';
+        var name    = ((document.getElementById('save-request-name')     || {}).value || '').trim();
+        var snapshot = (document.getElementById('save-snapshot')          || {}).value || '';
+        var resultEl = document.getElementById('save-result');
+
+        if (!collID) {
+            if (resultEl) { resultEl.textContent = 'Please select a collection.'; resultEl.classList.remove('hidden'); }
+            return;
+        }
+
+        btn.disabled = true;
+        var origText = btn.textContent;
+
+        var fd = new FormData();
+        fd.append('collection_id',  collID);
+        fd.append('request_name',   name || 'Untitled Request');
+        fd.append('snapshot',       snapshot);
+
+        fetch('/collections/save-request', { method: 'POST', body: fd })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok) {
+                    document.getElementById('save-collection-modal').close();
+                    document.getElementById('save-request-name').value = '';
+                    // Auto-expand the target collection so the saved request is visible
+                    _collExpanded[collID] = true;
+                    // Dispatch event so HTMX refreshes the collections list
+                    document.body.dispatchEvent(new Event('collectionsUpdated'));
+                    // Switch sidebar to collections tab
+                    switchSidebarTab('collections');
+                } else {
+                    if (resultEl) { resultEl.textContent = data.error || 'Save failed.'; resultEl.classList.remove('hidden'); }
+                }
+            })
+            .catch(function() {
+                if (resultEl) { resultEl.textContent = 'Network error — please try again.'; resultEl.classList.remove('hidden'); }
+            })
+            .finally(function() {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // COLLECTION SETTINGS MODAL
+    // ══════════════════════════════════════════════════════════════════════
+
+    function openCollSettings(id) {
+        var content = document.getElementById('coll-settings-content');
+        if (!content) return;
+
+        // Show spinner while loading
+        content.innerHTML = '<div class="flex items-center justify-center h-24 text-base-content/30">' +
+            '<span class="loading loading-spinner loading-sm mr-2"></span>Loading…</div>';
+
+        document.getElementById('coll-settings-modal').showModal();
+
+        // Load content via HTMX
+        htmx.ajax('GET', '/collections/' + encodeURIComponent(id) + '/settings', {
+            target: '#coll-settings-content',
+            swap:   'innerHTML'
+        });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PANEL RESIZE — drag the handle between request and response areas
+    // ══════════════════════════════════════════════════════════════════════
+    (function() {
+        var handle      = document.getElementById('split-handle');
+        var reqArea     = document.getElementById('request-area');
+        var centerCol   = document.getElementById('center-col');
+        var dragging    = false;
+        var startY      = 0;
+        var startReqH   = 0;
+
+        handle.addEventListener('mousedown', function(e) {
+            dragging  = true;
+            startY    = e.clientY;
+            startReqH = reqArea.getBoundingClientRect().height;
+            document.body.style.cursor    = 'row-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            var totalH  = centerCol.getBoundingClientRect().height;
+            var delta   = e.clientY - startY;
+            var newH    = Math.min(Math.max(startReqH + delta, 80), totalH - 80);
+            var pct     = (newH / totalH * 100).toFixed(2);
+            reqArea.style.height = pct + '%';
+            reqArea.style.flex   = 'none';
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!dragging) return;
+            dragging = false;
+            document.body.style.cursor    = '';
+            document.body.style.userSelect = '';
+        });
+
+        // Touch support
+        handle.addEventListener('touchstart', function(e) {
+            dragging  = true;
+            startY    = e.touches[0].clientY;
+            startReqH = reqArea.getBoundingClientRect().height;
+            e.preventDefault();
+        }, { passive: false });
+
+        document.addEventListener('touchmove', function(e) {
+            if (!dragging) return;
+            var totalH = centerCol.getBoundingClientRect().height;
+            var delta  = e.touches[0].clientY - startY;
+            var newH   = Math.min(Math.max(startReqH + delta, 80), totalH - 80);
+            var pct    = (newH / totalH * 100).toFixed(2);
+            reqArea.style.height = pct + '%';
+            reqArea.style.flex   = 'none';
+            e.preventDefault();
+        }, { passive: false });
+
+        document.addEventListener('touchend', function() {
+            dragging = false;
+        });
+    })();
+
+    // ── Hide the "hit Send" label once a real response is injected ─────────
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+        if (evt.detail && evt.detail.target && evt.detail.target.id === 'response-body') {
+            var hdr = document.getElementById('response-empty-header');
+            if (hdr) hdr.classList.add('hidden');
         }
     });
     </script>

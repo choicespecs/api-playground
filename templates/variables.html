@@ -1,0 +1,127 @@
+{{/* variables.html — Global variables panel.
+     Loaded by HTMX into #vars-modal-content. */}}
+
+<div class="flex justify-between items-center mb-3">
+    <h3 class="font-bold text-lg flex items-center gap-2">
+        <span class="font-code text-primary opacity-70">{ }</span> Global Variables
+    </h3>
+    <form method="dialog">
+        <button class="btn btn-sm btn-ghost btn-circle">✕</button>
+    </form>
+</div>
+
+<div class="text-xs text-base-content/40 bg-base-200 rounded-lg p-2.5 leading-relaxed mb-4">
+    Use <code class="font-code text-primary/80">{{ printf "{{NAME}}" }}</code> in any URL, header, param, or body field.
+    Type <code class="font-code text-primary/80">{{ printf "{{" }}</code> anywhere to get an autocomplete picker.
+    <strong class="text-base-content/60">Click a name</strong> to copy it •
+    <strong class="text-base-content/60">Click a value</strong> to edit it inline.
+</div>
+
+{{ if .Error }}
+<div class="alert alert-error p-2 text-xs mb-3 rounded-lg">{{ .Error }}</div>
+{{ end }}
+
+{{ if .GlobalVars }}
+<!-- Variable list header -->
+<div class="grid gap-x-2 px-2 mb-1" style="grid-template-columns: auto 1fr auto">
+    <span class="text-xs text-base-content/30 font-semibold uppercase tracking-widest">Name</span>
+    <span class="text-xs text-base-content/30 font-semibold uppercase tracking-widest">Value</span>
+    <span></span>
+</div>
+
+<!-- Variable rows -->
+<div class="flex flex-col gap-1 mb-4 max-h-64 overflow-y-auto pr-1">
+    {{ range .GlobalVars }}
+    <div class="grid items-center gap-x-2 px-2 py-1 bg-base-200 rounded-lg group"
+         style="grid-template-columns: auto 1fr auto">
+
+        <!-- Variable name chip — click to copy -->
+        <button type="button"
+                onclick="copyVarToken(this, '{{ .Name }}')"
+                class="font-code text-xs text-primary/90 bg-primary/10 hover:bg-primary/25
+                       active:scale-95 px-1.5 py-0.5 rounded shrink-0 transition-all
+                       cursor-pointer select-none whitespace-nowrap"
+                title="Click to copy {{ printf `{{%s}}` .Name }} to clipboard">
+            {{ printf "{{%s}}" .Name }}
+        </button>
+
+        <!-- Value — always-editable; auto-saves on blur or Enter (only when changed) -->
+        <input type="text"
+               name="value"
+               value="{{ .Value }}"
+               data-orig="{{ .Value }}"
+               placeholder="(empty)"
+               class="input input-ghost input-xs w-full font-code text-base-content/70
+                      px-1.5 rounded focus:bg-base-100 focus:text-base-content transition-colors
+                      min-w-0"
+               hx-patch="/variables/{{ .ID }}"
+               hx-trigger="blur[this.value!==this.dataset.orig], keydown[key=='Enter'&&this.value!==this.dataset.orig]"
+               hx-target="#vars-modal-content"
+               hx-swap="innerHTML"
+               title="Click to edit — saves on Enter or when you click away" />
+
+        <!-- Delete -->
+        <button type="button"
+                class="btn btn-ghost btn-xs text-error opacity-0 group-hover:opacity-100
+                       shrink-0 transition-opacity px-1.5"
+                hx-delete="/variables/{{ .ID }}"
+                hx-target="#vars-modal-content"
+                hx-swap="innerHTML"
+                title="Delete variable">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+        </button>
+
+    </div>
+    {{ end }}
+</div>
+{{ else }}
+<p class="text-xs text-base-content/25 italic mb-4">No global variables yet. Add one below.</p>
+{{ end }}
+
+<!-- Add variable form -->
+<form hx-post="/variables"
+      hx-target="#vars-modal-content"
+      hx-swap="innerHTML">
+    <div class="flex gap-2 items-end">
+        <div class="w-36 shrink-0">
+            <label class="label py-1"><span class="label-text text-xs">Name</span></label>
+            <input type="text" name="name" placeholder="BASE_URL"
+                   pattern="[A-Za-z_][A-Za-z0-9_]*"
+                   title="Letters, digits, underscores; cannot start with a digit"
+                   required
+                   class="input input-sm input-bordered w-full font-code" />
+        </div>
+        <div class="flex-1">
+            <label class="label py-1"><span class="label-text text-xs">Value</span></label>
+            <input type="text" name="value" placeholder="https://api.example.com"
+                   class="input input-sm input-bordered w-full font-code" />
+        </div>
+        <button type="submit" class="btn btn-sm btn-primary shrink-0 gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add
+        </button>
+    </div>
+</form>
+
+<script>
+// Copy the variable token to clipboard with visual feedback on the chip button.
+function copyVarToken(btn, name) {
+    var token = '{' + '{' + name + '}' + '}';
+    navigator.clipboard.writeText(token).then(function() {
+        var orig = btn.textContent.trim();
+        btn.textContent = '✓ copied!';
+        btn.classList.add('bg-success/20', 'text-success');
+        btn.classList.remove('bg-primary/10', 'text-primary/90');
+        setTimeout(function() {
+            btn.textContent = orig;
+            btn.classList.remove('bg-success/20', 'text-success');
+            btn.classList.add('bg-primary/10', 'text-primary/90');
+        }, 1200);
+    });
+}
+</script>

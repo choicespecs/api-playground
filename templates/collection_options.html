@@ -1,0 +1,5 @@
+{{/* collection_options.html — <option> elements for the save-to-collection modal. */}}
+<option value="">— Select a collection —</option>
+{{ range .Collections }}
+<option value="{{ .ID }}">{{ .Name }}</option>
+{{ end }}

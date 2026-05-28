@@ -283,6 +283,27 @@ func parseRawHTTP(raw string) ParsedCurl {
 	return result
 }
 
+// bodyTypeFromHeaders infers the body_type select value from a Content-Type header.
+// Falls back to "json" if no Content-Type is present or unrecognised.
+func bodyTypeFromHeaders(headers []KVPair) string {
+	for _, h := range headers {
+		if strings.EqualFold(h.Key, "content-type") {
+			v := strings.ToLower(h.Val)
+			switch {
+			case strings.Contains(v, "xml"):
+				return "xml"
+			case strings.Contains(v, "form"):
+				return "form"
+			case strings.Contains(v, "text/plain"):
+				return "text"
+			default:
+				return "json"
+			}
+		}
+	}
+	return "json"
+}
+
 // ParseRawHTTPHandler handles POST /parse-raw-http
 func ParseRawHTTPHandler(c *gin.Context) {
 	raw := strings.TrimSpace(c.PostForm("raw_http"))
@@ -306,7 +327,7 @@ func ParseRawHTTPHandler(c *gin.Context) {
 		"Headers":       parsed.Headers,
 		"Params":        parsed.Params,
 		"Body":          parsed.Body,
-		"BodyType":      "json",
+		"BodyType":      bodyTypeFromHeaders(parsed.Headers),
 		"AuthProfileID": "",
 	})
 }
@@ -336,7 +357,7 @@ func ParseCurlHandler(c *gin.Context) {
 		"Headers":       parsed.Headers,
 		"Params":        parsed.Params,
 		"Body":          parsed.Body,
-		"BodyType":      "json",
+		"BodyType":      bodyTypeFromHeaders(parsed.Headers),
 		"AuthProfileID": "",
 	})
 }
