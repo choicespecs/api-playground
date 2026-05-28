@@ -14,9 +14,33 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SendRequest handles POST /send
-// Reads the form, fires the proxied HTTP request, injects auth, saves history,
-// and returns an HTML snippet for HTMX to drop into the response panel.
+// SendRequest handles POST /send.
+//
+// It is the core request proxy: reads the submitted form, expands variable
+// placeholders, appends query params, injects the selected auth profile
+// (server-side), fires the outbound HTTP request through a 30-second client,
+// automatically retries once on a 401 with a fresh token, pretty-prints a JSON
+// response body, saves the entry to history, and returns an HTML snippet that
+// HTMX drops into the response panel.
+//
+// Processing stages (numbered inline below):
+//  1. Read form fields (method, url, body, headers, params, auth, collection)
+//  2. Expand {{VAR}} / {VAR} placeholders in url, body, header values, param values
+//  3. Inherit collection default auth if no auth profile was explicitly selected
+//  4. Validate the URL; auto-prefix https:// if missing
+//  5. Detect unresolved placeholders and return a friendly error
+//  6. Append query params to the URL
+//  7. Build the http.Request and attach headers
+//  8. Inject the auth token via injectAuth()
+//  9. Fire the request (30s timeout)
+//  10. Auto-retry on 401 with force-refreshed token
+//  11. Read and pretty-print the response body (truncated at 50 KB)
+//  12. Collect response headers
+//  13. Format response size as human-readable string
+//  14. Map status code to DaisyUI badge class
+//  15. Save to history
+//  16. Suggest existing auth profiles when response is 401
+//  17. Render response.html and return it to the browser
 func SendRequest(c *gin.Context) {
 	// ── 1. Read form fields ──────────────────────────────────────────────
 	method := c.PostForm("method")
@@ -182,6 +206,7 @@ func SendRequest(c *gin.Context) {
 		}
 	}
 
+	// Truncate to prevent WKWebView jank on large payloads
 	const maxDisplay = 50_000
 	truncated := false
 	if len(formattedBody) > maxDisplay {

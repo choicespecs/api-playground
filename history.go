@@ -11,9 +11,15 @@ import (
 )
 
 const historyFile = "history.json"
+
+// maxHistory is the maximum number of entries retained in history.json.
+// Older entries are discarded when the cap is reached (newest-first order).
 const maxHistory = 100
 
-// HistoryEntry is one saved request + its result summary.
+// HistoryEntry is one saved request paired with its result summary.
+// It mirrors the fields of SavedRequest but also stores the HTTP response
+// status code and elapsed duration. Entries are created by SendRequest and
+// are read-only after creation (no update path — only delete or replay).
 type HistoryEntry struct {
 	ID            string   `json:"id"`
 	Method        string   `json:"method"`
@@ -21,7 +27,7 @@ type HistoryEntry struct {
 	Headers       []KVPair `json:"headers"`
 	Params        []KVPair `json:"params"`
 	Body          string   `json:"body"`
-	BodyType      string   `json:"body_type,omitempty"`      // json | xml | form | text
+	BodyType      string   `json:"body_type,omitempty"`       // json | xml | form | text
 	AuthProfileID string   `json:"auth_profile_id,omitempty"` // linked auth profile
 	Status        int      `json:"status"`
 	Duration      string   `json:"duration"`
@@ -29,6 +35,7 @@ type HistoryEntry struct {
 }
 
 // StatusClass returns the DaisyUI badge variant for the HTTP status code.
+// Used by history.html to colour each entry's status badge.
 func (e HistoryEntry) StatusClass() string {
 	switch {
 	case e.Status >= 200 && e.Status < 300:
@@ -43,6 +50,7 @@ func (e HistoryEntry) StatusClass() string {
 }
 
 // ShortURL returns the URL truncated to 40 chars for sidebar display.
+// Appends "…" when the URL is longer than 40 characters.
 func (e HistoryEntry) ShortURL() string {
 	if len(e.URL) > 40 {
 		return e.URL[:40] + "…"
@@ -52,6 +60,8 @@ func (e HistoryEntry) ShortURL() string {
 
 // ── Persistence ────────────────────────────────────────────────────────────
 
+// loadHistory reads all history entries from historyFile.
+// Returns an empty slice on any error (file not found, parse failure).
 func loadHistory() []HistoryEntry {
 	data, err := os.ReadFile(historyFile)
 	if err != nil {
@@ -64,6 +74,8 @@ func loadHistory() []HistoryEntry {
 	return entries
 }
 
+// saveHistory writes entries to historyFile with 2-space indented JSON.
+// A nil slice is written as an empty JSON array.
 func saveHistory(entries []HistoryEntry) error {
 	if entries == nil {
 		entries = []HistoryEntry{}
@@ -76,6 +88,7 @@ func saveHistory(entries []HistoryEntry) error {
 }
 
 // addToHistory prepends a new entry (newest first) and trims to maxHistory.
+// Called by SendRequest after every successful or failed request attempt.
 func addToHistory(entry HistoryEntry) {
 	entries := loadHistory()
 	entries = append([]HistoryEntry{entry}, entries...)
@@ -86,6 +99,7 @@ func addToHistory(entry HistoryEntry) {
 }
 
 // deleteHistoryEntry removes a single entry by ID.
+// It is a no-op if the ID is not found.
 func deleteHistoryEntry(id string) {
 	entries := loadHistory()
 	out := entries[:0]
@@ -97,7 +111,8 @@ func deleteHistoryEntry(id string) {
 	saveHistory(out)
 }
 
-// newHistoryEntry builds a HistoryEntry from request inputs and response outcome.
+// newHistoryEntry constructs a HistoryEntry from the request inputs and
+// response outcome. The ID is a nanosecond Unix timestamp decimal string.
 func newHistoryEntry(
 	method, rawURL string,
 	headers, params []KVPair,
@@ -122,8 +137,9 @@ func newHistoryEntry(
 
 // ── Handlers ───────────────────────────────────────────────────────────────
 
-// HistoryPanelHandler handles GET /history-panel
-// Returns the history list HTML — HTMX drops it into the sidebar.
+// HistoryPanelHandler handles GET /history-panel.
+// Returns the history list HTML — HTMX drops it into the sidebar via innerHTML swap.
+// Triggered on load and on every historyUpdated HX-Trigger event.
 func HistoryPanelHandler(c *gin.Context) {
 	entries := loadHistory()
 	c.HTML(200, "history.html", gin.H{
@@ -131,8 +147,10 @@ func HistoryPanelHandler(c *gin.Context) {
 	})
 }
 
-// HistoryLoadHandler handles GET /history/:id
-// Finds the entry and returns the pre-filled form HTML.
+// HistoryLoadHandler handles GET /history/:id.
+// Finds the entry by ID and returns form.html pre-filled with all of the
+// original request fields. HTMX replaces #request-form via outerHTML swap.
+// Falls back to a blank form if the ID is not found.
 func HistoryLoadHandler(c *gin.Context) {
 	id := c.Param("id")
 	for _, entry := range loadHistory() {
@@ -165,16 +183,18 @@ func HistoryLoadHandler(c *gin.Context) {
 	c.HTML(200, "form.html", defaultFormData())
 }
 
-// HistoryDeleteHandler handles DELETE /history/:id
-// Deletes one entry and fires historyUpdated so the panel reloads.
+// HistoryDeleteHandler handles DELETE /history/:id.
+// Deletes one entry and fires historyUpdated so the sidebar reloads.
+// Returns HTTP 204 No Content on success.
 func HistoryDeleteHandler(c *gin.Context) {
 	deleteHistoryEntry(c.Param("id"))
 	c.Header("HX-Trigger", "historyUpdated")
 	c.Status(http.StatusNoContent)
 }
 
-// HistoryExportHandler handles GET /history/export
-// Serves history.json as a file download.
+// HistoryExportHandler handles GET /history/export.
+// Serves the raw historyFile content as a JSON file download.
+// Route must be registered before /history/:id to avoid routing conflicts.
 func HistoryExportHandler(c *gin.Context) {
 	data, err := os.ReadFile(historyFile)
 	if err != nil {
@@ -184,8 +204,11 @@ func HistoryExportHandler(c *gin.Context) {
 	c.Data(200, "application/json", data)
 }
 
-// HistoryImportHandler handles POST /history/import
-// Merges an uploaded JSON file into the existing history (deduplicates by ID).
+// HistoryImportHandler handles POST /history/import.
+// Accepts a multipart file upload containing a JSON array of HistoryEntry
+// values. Merges them into the existing history, deduplicating by ID (imported
+// entries take precedence for ordering but duplicates are discarded), and
+// trims the result to maxHistory. Fires historyUpdated on completion.
 func HistoryImportHandler(c *gin.Context) {
 	file, err := c.FormFile("import_file")
 	if err != nil {

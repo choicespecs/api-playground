@@ -8,6 +8,15 @@ import (
 	webview "github.com/webview/webview_go"
 )
 
+// main is the application entry point. It starts the Gin HTTP server on a
+// background goroutine and then opens the native macOS window (WKWebView) on
+// the main goroutine, which blocks until the user closes the window.
+//
+// Architecture note: the Go binary serves dual roles —
+//  1. A local HTTP server (localhost:8080) that acts as the API proxy, template
+//     renderer, and data-persistence layer.
+//  2. A native window host (webview_go / WKWebView) that loads the local server
+//     as its URL, giving the app a desktop presence without a browser.
 func main() {
 	// Silence gin logs — the user never sees a terminal
 	gin.SetMode(gin.ReleaseMode)
@@ -27,16 +36,32 @@ func main() {
 	// Size the window to fit the screen.
 	// Prefer up to 1400×900 but never exceed the available display area.
 	sw, sh := screenSize()
-	winW := sw - 40  // 20px breathing room each side
-	winH := sh - 60  // 30px top (menu bar) + 30px bottom
-	if winW > 1400 { winW = 1400 }
-	if winH > 900  { winH = 900  }
+	winW := sw - 40 // 20px breathing room each side
+	winH := sh - 60 // 30px top (menu bar) + 30px bottom
+	if winW > 1400 {
+		winW = 1400
+	}
+	if winH > 900 {
+		winH = 900
+	}
 	w.SetSize(winW, winH, webview.HintNone)
 
 	w.Navigate("http://localhost:8080")
 	w.Run() // blocks until the window is closed
 }
 
+// startServer configures the Gin router with all application routes and starts
+// listening on :8080. It is called as a goroutine from main() so the server
+// runs concurrently with the WKWebView window.
+//
+// Route groups:
+//   - Main UI:       GET /
+//   - Request proxy: POST /send
+//   - Import:        POST /parse-curl, POST /parse-raw-http
+//   - History:       /history*
+//   - Auth profiles: /auth-profiles*
+//   - Variables:     /variables*
+//   - Collections:   /collections*
 func startServer() {
 	router := gin.Default()
 

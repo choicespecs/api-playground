@@ -1,4 +1,4 @@
-# ⚡ API Playground
+# API Playground
 
 A lightweight Postman-style HTTP client — runs as a native macOS desktop app or directly from the terminal. All requests are proxied through a local Go server (no CORS issues). Supports collections, variables, auth profiles, and curl import.
 
@@ -9,7 +9,7 @@ A lightweight Postman-style HTTP client — runs as a native macOS desktop app o
 | Requirement | Why |
 |---|---|
 | [Go 1.21+](https://go.dev/dl/) | Builds the server |
-| Xcode Command Line Tools | Required for the native macOS window (`webview`) |
+| Xcode Command Line Tools | Required for the native macOS window (`webview`) and CGO screen sizing |
 
 **Install Go:** https://go.dev/dl/
 
@@ -47,7 +47,7 @@ cp -r "API Playground.app" /Applications/
 
 Then open **API Playground** from Finder or Spotlight like any other app.
 
-> **First launch note:** macOS may show a security prompt because the binary isn't Apple-signed.  
+> **First launch note:** macOS may show a security prompt because the binary is not Apple-signed.
 > Right-click → **Open** → **Open** to allow it once.
 
 **Rebuilding after code changes:**
@@ -77,11 +77,13 @@ go mod download
 go run .
 ```
 
-> Or build a standalone binary first:
-> ```bash
-> CGO_ENABLED=1 go build -o api-playground .
-> ./api-playground
-> ```
+Or build a standalone binary first:
+```bash
+CGO_ENABLED=1 go build -o api-playground .
+./api-playground
+```
+
+The binary must be run from the project root directory — templates are loaded relative to the working directory.
 
 ---
 
@@ -89,22 +91,32 @@ go run .
 
 The workspace is split into three columns:
 
-```
-┌─────────────┬──────────────────────────────┬─────────────┐
-│  Left       │  Center                      │  Right      │
-│  Sidebar    │  ┌──────────────────────────┐│  Variables  │
-│             │  │  Request builder (top)   ││  panel      │
-│  ⏱ History  │  │  URL · Headers · Body    ││             │
-│  📁 Collec- │  │  Params · Auth           ││  {{VAR}} →  │
-│    tions    │  │  [Send Request]          ││  value      │
-│             │  ├──────────────────────────┤│             │
-│             │  │  Response (bottom)       ││  copy/del   │
-│             │  │  Status · Body · Headers ││  buttons    │
-└─────────────┴──────────────────────────────┴─────────────┘
+```mermaid
+flowchart LR
+    subgraph Left["Left Sidebar"]
+        H["History\n(searchable)"]
+        C["Collections"]
+    end
+    subgraph Center["Center Panel"]
+        subgraph Top["Request Builder (top)"]
+            URL["Method + URL"]
+            Tabs["Headers | Params | Body | Auth"]
+            Send["Send Request"]
+        end
+        subgraph Bottom["Response (bottom, resizable)"]
+            Status["Status · Duration · Size"]
+            Body["Body | Headers tabs"]
+        end
+    end
+    subgraph Right["Right Sidebar"]
+        Vars["Active Variables\n{{VAR}} chips\nInline edit / delete"]
+    end
+    Left --> Center
+    Center --> Right
 ```
 
-- **Request and response are stacked vertically** (Postman-style) — both visible at once without scrolling
-- **Right panel** always shows your active variables for quick reference
+- **Request and response are stacked vertically** (Postman-style) — both visible at once without scrolling. Drag the divider to resize.
+- **Right panel** always shows your active variables (global + current collection) for quick reference and insertion.
 
 ---
 
@@ -114,13 +126,15 @@ The workspace is split into three columns:
 |---|---|
 | **HTTP client** | GET / POST / PUT / DELETE / PATCH with URL, query params, headers, and body |
 | **Body types** | JSON, XML, Form URL-encoded, plain text — auto-sets `Content-Type` |
-| **Curl import** | Paste a `curl` command into the URL bar and the form fills automatically |
+| **curl import** | Paste a `curl` command into the URL bar or the Import modal — the form fills automatically |
+| **Raw HTTP import** | Paste a raw HTTP request (from DevTools, Charles, Wireshark) into the Import modal |
+| **curl export** | Generate a `curl` command from the current form via the `</> curl` button |
 | **Variables** | Define `{{VAR}}` placeholders; expanded server-side in URL, headers, params, and body |
 | **Autocomplete** | Type `{{` in any field to get a live picker of your defined variables |
 | **Collections** | Group saved requests in named folders; each collection has its own variables and default auth |
-| **History** | Every request auto-saves; searchable, replayable, deletable, export/import as JSON |
-| **Auth profiles** | Credentials injected server-side — tokens cached and auto-refreshed on 401 |
-| **No CORS** | The Go server proxies all outbound requests |
+| **History** | Every request auto-saves (last 100); searchable, replayable, deletable, export/import as JSON |
+| **Auth profiles** | Token API: call a login endpoint, cache the token, auto-refresh on 401 |
+| **No CORS** | The Go server proxies all outbound requests — no browser origin restrictions |
 
 ---
 
@@ -128,10 +142,10 @@ The workspace is split into three columns:
 
 ### Defining variables
 
-Click **{ } Vars** in the navbar to open the global variables panel, or use the **+ Edit** button at the top of the right sidebar.
+Click **+ Add** in the right sidebar or open the variables modal to add global variables.
 
 - Type a **Name** (letters, digits, underscores — cannot start with a digit) and a **Value**, then click **Add**
-- **Click the value** of any existing variable to edit it inline — saves automatically when you press Enter or click away
+- **Click the value** of any existing variable to edit it inline — saves automatically on Enter or blur
 - **Click a `{{NAME}}` chip** to copy the token to your clipboard
 - **Delete** button appears on hover (trash icon)
 
@@ -140,8 +154,8 @@ Click **{ } Vars** in the navbar to open the global variables panel, or use the 
 Both syntaxes work anywhere (URL, headers, params, body):
 
 ```
-{{BASE_URL}}     ← canonical double-brace syntax
-{BASE_URL}       ← single-brace also works (convenience)
+{{BASE_URL}}     canonical double-brace syntax
+{BASE_URL}       single-brace also works (convenience)
 ```
 
 Examples:
@@ -158,7 +172,7 @@ Expansion happens **server-side** before the request fires. The URL bar shows a 
 Three ways to insert a variable into any field:
 
 1. **Quickbar chips** — a row of `{{VAR}}` buttons appears below the URL input once any variables are defined; click one to insert at the cursor
-2. **Autocomplete** — type `{{` in the URL, a header value, param value, or body to get a live dropdown picker; navigate with ↑/↓, select with Enter or Tab, dismiss with Esc
+2. **Autocomplete** — type `{{` in the URL, a header value, param value, or body to get a live dropdown picker; navigate with up/down arrows, select with Enter or Tab, dismiss with Esc
 3. **Right sidebar** — click any `{{VAR}}` chip to copy the token, then paste it where you need it
 
 ### Variable precedence
@@ -167,30 +181,30 @@ Three ways to insert a variable into any field:
 
 | Scope | Where set | Priority |
 |---|---|---|
-| Global | { } Vars panel / right sidebar | Base |
-| Collection | ⚙ Collection Settings | Overrides global |
+| Global | Variables panel / right sidebar | Base |
+| Collection | Collection Settings | Overrides global |
 
 ### Unresolved variables
 
-If a placeholder isn't expanded (e.g. the variable isn't defined or the name is misspelled), the server returns a clear error message explaining which placeholder is missing, rather than a cryptic network error.
+If a placeholder is not expanded (the variable is not defined or the name is misspelled), the server returns a clear error message explaining which placeholder is missing, rather than a cryptic network error.
 
 ---
 
 ## Collections
 
-Click **📁 Collections** in the left sidebar to manage collections.
+Click **Collections** in the left sidebar to manage collections.
 
 - **Create** — type a name in the input at the top and press **+**
 - **Save a request** — click **Save** in the toolbar above the request form
 - **Load a request** — expand a collection and click any saved request
-- **Collection settings (⚙)** — set the collection name, default auth profile, and collection-scoped variables
-- **Delete a request** — hover over it and click **✕**
+- **Collection settings** — set the collection name, default auth profile, and collection-scoped variables
+- **Delete a request** — hover over it and click **x**
 
 ---
 
 ## Auth Profiles
 
-Click **🔐 Auth** in the navbar to manage auth profiles.
+Click **Auth** in the navbar to manage auth profiles.
 
 The only profile type is **Token API** — for APIs that require calling a login endpoint first:
 
@@ -205,7 +219,7 @@ The only profile type is **Token API** — for APIs that require calling a login
 
 For simple cases (static bearer tokens, API keys), use **Variables** instead — define a `TOKEN` variable and add `Authorization: Bearer {{TOKEN}}` as a header.
 
-Hit **Test Login** before saving to verify the config fires correctly.  
+Hit **Test Login** before saving to verify the config fires correctly.
 Tokens are cached and **auto-refreshed** when close to expiry or when a 401 is received.
 
 ---
@@ -216,28 +230,36 @@ Tokens are cached and **auto-refreshed** when close to expiry or when a 401 is r
 api-playground/
 ├── main.go              # native window (webview) + server setup
 ├── handlers.go          # POST /send — proxies requests, injects auth, expands variables
-├── auth.go              # auth profile CRUD, token injection, Token API
+├── auth.go              # auth profile CRUD, token injection, Token API flow
 ├── history.go           # history persistence, export/import, delete
 ├── collections.go       # collections + collection variables CRUD
 ├── variables.go         # global variables, {{VAR}} / {VAR} expansion
-├── curl_parser.go       # curl → form field parser
-├── environments.go      # (unused — kept for reference)
+├── curl_parser.go       # curl and raw HTTP import parsers
+├── environments.go      # environments system (dormant — kept for reference)
+├── screen_darwin.go     # CGO CoreGraphics screen sizing
 ├── build-app.sh         # builds "API Playground.app" for macOS
 ├── go.mod / go.sum
-└── templates/
-    ├── index.html             # shell: layout, sidebar, modals, all JS
-    ├── form.html              # request builder (method, URL, headers, params, body, auth)
-    ├── response.html          # response panel (body / headers tabs, status bar)
-    ├── history.html           # history sidebar entries
-    ├── collections_panel.html # collections sidebar
-    ├── collection_settings.html  # collection settings modal content
-    ├── collection_options.html   # <option> elements for save-to-collection dropdown
-    ├── variables.html         # variables modal (add / edit inline / delete)
-    ├── auth_profiles.html     # auth modal content + create form
-    └── auth_options.html      # <option> elements for auth dropdown in form
+├── templates/
+│   ├── index.html             # shell: layout, sidebar, modals, all JS
+│   ├── form.html              # request builder
+│   ├── response.html          # response panel
+│   ├── history.html           # history sidebar entries
+│   ├── collections_panel.html # collections sidebar
+│   ├── collection_settings.html
+│   ├── collection_options.html
+│   ├── variables.html
+│   ├── auth_profiles.html
+│   └── auth_options.html
+└── docs/
+    ├── ARCHITECTURE.md  # component map, startup sequence, data models
+    ├── FLOW.md          # data flow diagrams for every major action
+    ├── DESIGN.md        # design decisions and trade-off rationale
+    └── SECURITY.md      # threat model and security guidance
 ```
 
-### API routes
+---
+
+## API routes
 
 | Method | Path | Description |
 |---|---|---|
@@ -288,8 +310,8 @@ All files are created automatically on first use.
 | `variables.json` | Global variables |
 | `collections.json` | Collections, their requests, and their variables |
 
-When running as a `.app`, these live in `~/Library/Application Support/APIPlayground/`.  
-When running from the terminal, they're created in the current working directory.
+When running as a `.app`, these live in `~/Library/Application Support/APIPlayground/`.
+When running from the terminal, they are created in the current working directory.
 
 **Reset everything:**
 ```bash

@@ -15,6 +15,8 @@ const varsFile = "variables.json"
 
 // Variable is a global key/value substitution value referenced as {{NAME}}.
 // Environment-scoped variables live inside Environment.Variables instead.
+// Variables are persisted to varsFile and loaded fresh on every read.
+// IDs are nanosecond Unix timestamps formatted as decimal strings.
 type Variable struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -24,14 +26,18 @@ type Variable struct {
 
 // varRe matches every {{IDENTIFIER}} placeholder in a string.
 // Valid names: start with a letter or underscore, followed by letters/digits/underscores.
+// Used for both expansion and name validation.
 var varRe = regexp.MustCompile(`\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}`)
 
 // varReSingle matches {IDENTIFIER} (single-brace) as a forgiving fallback.
-// Only used when the variable name is actually defined in the map.
+// Only used when the variable name is actually defined in the map, so literal
+// JSON braces like {"key": "value"} are never incorrectly expanded.
 var varReSingle = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // ── Persistence (global variables) ────────────────────────────────────────
 
+// loadVariables reads all global variables from varsFile.
+// Returns an empty slice on any error (file not found, parse failure).
 func loadVariables() []Variable {
 	data, err := os.ReadFile(varsFile)
 	if err != nil {
@@ -44,6 +50,8 @@ func loadVariables() []Variable {
 	return vs
 }
 
+// saveVariables writes vs to varsFile with 2-space indented JSON.
+// A nil slice is written as an empty JSON array.
 func saveVariables(vs []Variable) error {
 	if vs == nil {
 		vs = []Variable{}
@@ -52,8 +60,10 @@ func saveVariables(vs []Variable) error {
 	return os.WriteFile(varsFile, data, 0644)
 }
 
-// upsertVariable saves a global variable: updates value in-place if the name
-// already exists, otherwise prepends a new entry.
+// upsertVariable saves a global variable: updates the value in-place if a
+// variable with the same name already exists, otherwise prepends a new entry
+// (newest first ordering). Returns the saved variable (with ID and CreatedAt
+// set for new entries).
 func upsertVariable(incoming Variable) Variable {
 	vs := loadVariables()
 	for i, v := range vs {
@@ -70,6 +80,8 @@ func upsertVariable(incoming Variable) Variable {
 	return incoming
 }
 
+// deleteVariable removes the variable with the given ID from varsFile.
+// It is a no-op if the ID is not found.
 func deleteVariable(id string) {
 	vs := loadVariables()
 	out := vs[:0]
@@ -85,6 +97,7 @@ func deleteVariable(id string) {
 
 // buildVarMap constructs the merged variable map for a given collection context.
 // Resolution order (later entries win): global → collection.
+// Returns a flat map[name]value suitable for string substitution.
 func buildVarMap(collID string) map[string]string {
 	m := make(map[string]string)
 	for _, v := range loadVariables() {
@@ -101,10 +114,13 @@ func buildVarMap(collID string) map[string]string {
 }
 
 // expandVariablesCtx replaces variable placeholders using the merged map for
-// the given collection context. Supports both {{NAME}} (canonical) and {NAME}
-// (single-brace convenience) — single-brace is only expanded when the variable
-// IS defined, so literal {braces} in bodies are left untouched.
-// Unresolved placeholders are left unchanged.
+// the given collection context. Two syntaxes are supported:
+//   - {{NAME}} (canonical double-brace) — always expanded
+//   - {NAME}  (single-brace convenience) — expanded only when NAME is in the map
+//
+// Single-brace expansion is conditional so that JSON bodies containing literal
+// {braces} are not accidentally corrupted. Unresolved placeholders are left
+// unchanged, so the caller (SendRequest) can detect them and report a clear error.
 func expandVariablesCtx(s, collID string) string {
 	if !strings.Contains(s, "{") {
 		return s
@@ -133,7 +149,8 @@ func expandVariablesCtx(s, collID string) string {
 	return result
 }
 
-// expandVariables is the no-collection-context variant (global + active env only).
+// expandVariables is the no-collection-context variant (global variables only).
+// Used by auth.go when expanding the login URL and body, which have no collection context.
 func expandVariables(s string) string {
 	return expandVariablesCtx(s, "")
 }
@@ -149,12 +166,16 @@ func buildVarsData() gin.H {
 
 // ── HTTP Handlers ──────────────────────────────────────────────────────────
 
-// VariablesPanelHandler handles GET /variables
+// VariablesPanelHandler handles GET /variables.
+// Returns the variables modal HTML rendered from variables.html.
 func VariablesPanelHandler(c *gin.Context) {
 	c.HTML(200, "variables.html", buildVarsData())
 }
 
-// VariableCreateHandler handles POST /variables — creates/updates a global variable.
+// VariableCreateHandler handles POST /variables.
+// Creates a new global variable or updates the value of an existing one with
+// the same name (upsert semantics). Validates the name against varRe.
+// Fires the variablesUpdated HX-Trigger to refresh dependent UI panels.
 func VariableCreateHandler(c *gin.Context) {
 	name := strings.TrimSpace(c.PostForm("name"))
 	data := buildVarsData()
@@ -171,14 +192,17 @@ func VariableCreateHandler(c *gin.Context) {
 	c.HTML(200, "variables.html", buildVarsData())
 }
 
-// VariableDeleteHandler handles DELETE /variables/:id — deletes a global variable.
+// VariableDeleteHandler handles DELETE /variables/:id.
+// Deletes the global variable with the given ID and fires variablesUpdated.
 func VariableDeleteHandler(c *gin.Context) {
 	deleteVariable(c.Param("id"))
 	c.Header("HX-Trigger", "variablesUpdated")
 	c.HTML(200, "variables.html", buildVarsData())
 }
 
-// VariablePatchHandler handles PATCH /variables/:id — updates a global variable's value inline.
+// VariablePatchHandler handles PATCH /variables/:id.
+// Updates only the value of the variable with the given ID (inline edit).
+// Fires variablesUpdated to sync the right panel and autocomplete map.
 func VariablePatchHandler(c *gin.Context) {
 	id := c.Param("id")
 	vs := loadVariables()
@@ -193,16 +217,19 @@ func VariablePatchHandler(c *gin.Context) {
 	c.HTML(200, "variables.html", buildVarsData())
 }
 
-// VariablesMapHandler handles GET /variables/map
+// VariablesMapHandler handles GET /variables/map.
 // Returns the fully-merged variable set as a flat JSON object for the
 // client-side URL-bar live preview. Accepts an optional ?collection_id= query
 // param so the preview also reflects collection-scoped variables.
+// Response: {"NAME": "value", ...}
 func VariablesMapHandler(c *gin.Context) {
 	c.JSON(200, buildVarMap(c.Query("collection_id")))
 }
 
-// VariablesListHandler handles GET /variables/list
-// Returns the raw global variable list as JSON (includes IDs needed for deletion).
+// VariablesListHandler handles GET /variables/list.
+// Returns the raw global variable list as JSON (includes IDs needed for
+// deletion and inline editing from the right panel).
+// Response: [{"id": "...", "name": "...", "value": "...", "created_at": "..."}]
 func VariablesListHandler(c *gin.Context) {
 	c.JSON(200, loadVariables())
 }

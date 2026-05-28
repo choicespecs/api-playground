@@ -18,8 +18,17 @@ const authFile = "auth_profiles.json"
 // AuthProfile stores the configuration for a Token API auth flow:
 // call a login endpoint, extract a token from the JSON response,
 // cache it, and inject it into every subsequent request automatically.
+//
 // Simple static auth (bearer tokens, API keys, etc.) should be handled
-// via {{VARIABLE}} placeholders in request headers instead.
+// via {{VARIABLE}} placeholders in request headers instead of auth profiles.
+//
+// The profile goes through three stages at request time:
+//  1. Login request — call LoginURL with LoginBody and LoginHeadersRaw
+//  2. Token extraction — traverse the JSON response at TokenPath (dot notation)
+//  3. Token injection — set TokenHeaderName: TokenPrefix + token on the outbound request
+//
+// Tokens are cached in AccessToken + ExpiresAt and written back to authFile
+// after each successful fetch so they survive app restarts.
 type AuthProfile struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -49,6 +58,8 @@ type AuthProfile struct {
 
 // ── Persistence ────────────────────────────────────────────────────────────
 
+// loadAuthProfiles reads all auth profiles from authFile.
+// Returns an empty slice on any error (file not found, parse failure).
 func loadAuthProfiles() []AuthProfile {
 	data, err := os.ReadFile(authFile)
 	if err != nil {
@@ -61,6 +72,8 @@ func loadAuthProfiles() []AuthProfile {
 	return ps
 }
 
+// saveAuthProfiles writes ps to authFile with 2-space indented JSON.
+// A nil slice is written as an empty JSON array.
 func saveAuthProfiles(ps []AuthProfile) error {
 	if ps == nil {
 		ps = []AuthProfile{}
@@ -69,6 +82,8 @@ func saveAuthProfiles(ps []AuthProfile) error {
 	return os.WriteFile(authFile, data, 0644)
 }
 
+// addAuthProfile prepends a new profile (newest first) and assigns it a
+// nanosecond-timestamp ID. Returns the saved profile.
 func addAuthProfile(p AuthProfile) AuthProfile {
 	ps := loadAuthProfiles()
 	p.ID = fmt.Sprintf("%d", time.Now().UnixNano())
@@ -78,6 +93,8 @@ func addAuthProfile(p AuthProfile) AuthProfile {
 	return p
 }
 
+// deleteAuthProfile removes the profile with the given ID from authFile.
+// It is a no-op if the ID is not found.
 func deleteAuthProfile(id string) {
 	ps := loadAuthProfiles()
 	out := ps[:0]
@@ -89,6 +106,8 @@ func deleteAuthProfile(id string) {
 	saveAuthProfiles(out)
 }
 
+// getAuthProfile returns the profile with the given ID and true, or the zero
+// value and false if not found.
 func getAuthProfile(id string) (AuthProfile, bool) {
 	for _, p := range loadAuthProfiles() {
 		if p.ID == id {
@@ -98,6 +117,8 @@ func getAuthProfile(id string) (AuthProfile, bool) {
 	return AuthProfile{}, false
 }
 
+// updateAuthProfile replaces the stored profile that has the same ID as updated.
+// Used to write back refreshed token values after a successful login call.
 func updateAuthProfile(updated AuthProfile) {
 	ps := loadAuthProfiles()
 	for i, p := range ps {
@@ -111,9 +132,12 @@ func updateAuthProfile(updated AuthProfile) {
 
 // ── Auth injection ─────────────────────────────────────────────────────────
 
-// injectAuth calls the profile's login endpoint (if not cached / expired),
-// then injects the token into req.
-// Pass force=true to bypass the cache and fetch a fresh token (used on 401 retry).
+// injectAuth retrieves the token for profileID (using the cache unless force
+// is true) and sets the appropriate header on req. It is a no-op when
+// profileID is empty or the profile has been deleted.
+//
+// Pass force=true to bypass the cache and fetch a fresh token unconditionally.
+// This is used by the 401 auto-retry path in SendRequest.
 func injectAuth(req *http.Request, profileID string, force bool) error {
 	if profileID == "" {
 		return nil
@@ -142,9 +166,12 @@ func injectAuth(req *http.Request, profileID string, force bool) error {
 
 // ── Token API (login) flow ─────────────────────────────────────────────────
 
-// getLoginToken calls the configured login endpoint, extracts the token from
-// the JSON response at TokenPath (dot-notation), caches it, and returns it.
-// Pass force=true to bypass the cache and always fetch a fresh token.
+// getLoginToken returns a valid access token for the auth profile p.
+// If the cached token is still valid (ExpiresAt > now+30s) and force is false,
+// it is returned immediately without a network call. Otherwise the login
+// endpoint is called, the response JSON is traversed at TokenPath, the
+// expiry is calculated from ExpiryPath (or defaulted to +1 hour), and the
+// updated profile is written back to disk.
 func getLoginToken(p *AuthProfile, force bool) (string, error) {
 	// Return cached token if still valid (30-second buffer)
 	if !force && p.AccessToken != "" && p.ExpiresAt > time.Now().Unix()+30 {
@@ -217,6 +244,7 @@ func getLoginToken(p *AuthProfile, force bool) (string, error) {
 
 	p.AccessToken = token
 
+	// Parse optional expiry field; default to +1 hour if absent or unparseable
 	if p.ExpiryPath != "" {
 		if val := extractJSONPath(parsed, p.ExpiryPath); val != "" {
 			if secs, err := strconv.ParseInt(val, 10, 64); err == nil && secs > 0 {
@@ -233,6 +261,14 @@ func getLoginToken(p *AuthProfile, force bool) (string, error) {
 }
 
 // extractJSONPath traverses a parsed JSON value using a dot-notation path.
+// Returns the string representation of the leaf value, or "" if the path
+// does not exist or the leaf is not a scalar (string, number, bool).
+//
+// Examples:
+//
+//	extractJSONPath(resp, "access_token")    → "eyJ..."
+//	extractJSONPath(resp, "data.token")      → "eyJ..."
+//	extractJSONPath(resp, "expires_in")      → "3600"
 func extractJSONPath(v interface{}, path string) string {
 	parts := strings.SplitN(path, ".", 2)
 	key := parts[0]
@@ -259,7 +295,8 @@ func extractJSONPath(v interface{}, path string) string {
 	return extractJSONPath(val, parts[1])
 }
 
-// parseLoginHeaders parses a "Key: Value\n..." string into a map.
+// parseLoginHeaders parses a multi-line "Key: Value\n..." string into a map.
+// Lines that are empty or begin with '#' are ignored.
 func parseLoginHeaders(raw string) map[string]string {
 	m := make(map[string]string)
 	for _, line := range strings.Split(raw, "\n") {
@@ -275,6 +312,7 @@ func parseLoginHeaders(raw string) map[string]string {
 	return m
 }
 
+// min returns the smaller of two ints. Used for safe body preview truncation.
 func min(a, b int) int {
 	if a < b {
 		return a
@@ -284,16 +322,19 @@ func min(a, b int) int {
 
 // ── HTTP Handlers ──────────────────────────────────────────────────────────
 
+// authPanelData returns the common template context for auth profile views.
 func authPanelData() gin.H {
 	return gin.H{"Profiles": loadAuthProfiles()}
 }
 
-// AuthProfilesPanelHandler handles GET /auth-profiles
+// AuthProfilesPanelHandler handles GET /auth-profiles.
+// Returns the auth profiles modal HTML (auth_profiles.html).
 func AuthProfilesPanelHandler(c *gin.Context) {
 	c.HTML(200, "auth_profiles.html", authPanelData())
 }
 
-// AuthProfileCreateHandler handles POST /auth-profiles
+// AuthProfileCreateHandler handles POST /auth-profiles.
+// Creates a new auth profile from form fields and fires authProfilesUpdated.
 func AuthProfileCreateHandler(c *gin.Context) {
 	p := AuthProfile{
 		Type:            "login",
@@ -316,19 +357,28 @@ func AuthProfileCreateHandler(c *gin.Context) {
 	c.HTML(200, "auth_profiles.html", authPanelData())
 }
 
-// AuthProfileDeleteHandler handles DELETE /auth-profiles/:id
+// AuthProfileDeleteHandler handles DELETE /auth-profiles/:id.
+// Deletes the profile and fires authProfilesUpdated to refresh the modal.
 func AuthProfileDeleteHandler(c *gin.Context) {
 	deleteAuthProfile(c.Param("id"))
 	c.Header("HX-Trigger", "authProfilesUpdated")
 	c.HTML(200, "auth_profiles.html", authPanelData())
 }
 
-// AuthProfilesOptionsHandler handles GET /auth-profiles/options
+// AuthProfilesOptionsHandler handles GET /auth-profiles/options.
+// Returns <option> elements for the auth profile select in the request form.
+// Route must be registered before /auth-profiles/:id to avoid routing conflicts.
 func AuthProfilesOptionsHandler(c *gin.Context) {
 	c.HTML(200, "auth_options.html", gin.H{"Profiles": loadAuthProfiles()})
 }
 
-// AuthProfileTestLoginHandler handles POST /auth-profiles/test-login
+// AuthProfileTestLoginHandler handles POST /auth-profiles/test-login.
+// Fires a trial login with the provided config (not yet saved) and returns a
+// JSON result indicating success or failure. On success, includes the first 40
+// characters of the extracted token and its expiry timestamp.
+//
+// Response: {"ok": true, "token": "...", "inject_as": "Authorization: Bearer ...", "expires_at": 1234567890}
+// Response: {"ok": false, "error": "..."}
 func AuthProfileTestLoginHandler(c *gin.Context) {
 	p := AuthProfile{
 		LoginMethod:     c.PostForm("login_method"),

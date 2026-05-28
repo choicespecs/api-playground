@@ -8,35 +8,42 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// KVPair holds a key-value pair (used for headers and query params)
+// KVPair holds a key-value pair used for request headers and query params.
+// Both fields are plain strings; encoding/escaping is handled by the caller.
 type KVPair struct {
 	Key string
 	Val string
 }
 
-// ParsedCurl holds everything extracted from a raw curl command
+// ParsedCurl holds everything extracted from a raw curl command or raw HTTP block.
+// It is the intermediate representation used by both parsers before the data
+// is rendered into form.html.
 type ParsedCurl struct {
 	Method  string
 	URL     string
 	Headers []KVPair
-	Params  []KVPair
+	Params  []KVPair // query parameters extracted from the URL
 	Body    string
 }
 
-// tokenize splits a curl string into individual tokens,
-// correctly handling single-quoted and double-quoted strings,
-// shell line continuations (backslash + newline), and Windows line endings.
+// tokenize splits a curl string into individual shell tokens.
+// It handles:
+//   - Single-quoted strings ('value') — content taken literally, no escaping
+//   - Double-quoted strings ("value") — backslash escape sequences honoured
+//   - Backslash + newline continuations — silently consumed (multi-line curl)
+//   - Windows line endings (\r\n) — normalised to \n first
 //
-// Example:
+// Example input:
 //
 //	curl -X POST \
 //	  https://api.example.com \
 //	  -H 'Content-Type: application/json' \
 //	  -d '{"key":"val"}'
 //
-// becomes:
+// Example output:
 //
-//	["curl", "-X", "POST", "https://api.example.com", "-H", "Content-Type: application/json", "-d", `{"key":"val"}`]
+//	["curl", "-X", "POST", "https://api.example.com",
+//	 "-H", "Content-Type: application/json", "-d", `{"key":"val"}`]
 func tokenize(cmd string) []string {
 	// Normalize Windows line endings so \r\n behaves like \n everywhere.
 	cmd = strings.ReplaceAll(cmd, "\r\n", "\n")
@@ -100,12 +107,22 @@ func tokenize(cmd string) []string {
 }
 
 // parseCurl takes a raw curl string and returns a ParsedCurl struct.
-// It handles the most common curl flags:
 //
-//	-X / --request       → HTTP method
-//	-H / --header        → request headers
-//	-d / --data / etc.   → request body
-//	-u / --user          → basic auth (converted to Authorization header)
+// Supported flags:
+//
+//	-X / --request       HTTP method
+//	-H / --header        request headers (Key: Value)
+//	-d / --data / --data-raw / --data-binary / --data-urlencode  request body
+//	-u / --user          basic auth credentials (converted to Authorization: Basic header)
+//
+// Ignored flags (silently consumed to avoid misidentifying them as the URL):
+//
+//	--compressed, -s, -S, -L, -v, -i, -k, --insecure, --silent, --location,
+//	--include, --verbose, --no-buffer
+//
+// The URL is the first non-flag token. Query parameters are extracted from the
+// URL into Params[] via url.Parse so that the form's Params tab is populated.
+// If a body is present and no method was specified, the method defaults to POST.
 func parseCurl(cmd string) ParsedCurl {
 	tokens := tokenize(cmd)
 	result := ParsedCurl{Method: "GET"}
@@ -143,6 +160,7 @@ func parseCurl(cmd string) ParsedCurl {
 			}
 
 		case "-u", "--user":
+			// Basic auth: base64-encode "user:pass" and inject as Authorization header
 			i++
 			if i < len(tokens) {
 				encoded := base64.StdEncoding.EncodeToString([]byte(tokens[i]))
@@ -155,7 +173,7 @@ func parseCurl(cmd string) ParsedCurl {
 		case "--compressed", "-s", "-S", "-L", "-v", "-i",
 			"-k", "--insecure", "--silent", "--location",
 			"--include", "--verbose", "--no-buffer":
-			// skip
+			// skip — these flags have no equivalent in the request form
 
 		default:
 			if !strings.HasPrefix(tok, "-") && result.URL == "" {
@@ -165,6 +183,7 @@ func parseCurl(cmd string) ParsedCurl {
 		i++
 	}
 
+	// Default to POST when a body is present but no method was specified
 	if result.Body != "" && result.Method == "GET" {
 		result.Method = "POST"
 	}
@@ -190,13 +209,20 @@ func parseCurl(cmd string) ParsedCurl {
 // ── Raw HTTP parser ────────────────────────────────────────────────────────
 
 // parseRawHTTP parses a raw HTTP request (as copied from browser DevTools,
-// Charles, Wireshark, etc.) into a ParsedCurl struct.
+// Charles, Wireshark, or similar tools) into a ParsedCurl struct.
 //
 // Supports both request-target forms:
 //
-//	GET /path?q=1 HTTP/1.1          ← relative target + Host header
-//	POST https://host/path HTTP/1.1 ← absolute target
-//	POST https://host/path          ← no HTTP version line
+//	GET /path?q=1 HTTP/1.1          relative target (requires Host header)
+//	POST https://host/path HTTP/1.1 absolute target
+//	POST https://host/path          without HTTP version line
+//
+// The Host header is consumed to reconstruct the full URL when the target is
+// relative. For localhost/127.x/192.168.x addresses the scheme defaults to
+// http://; all others default to https://.
+//
+// Query parameters are extracted into Params[] and removed from the URL.
+// The body is everything after the first blank line (standard HTTP message format).
 func parseRawHTTP(raw string) ParsedCurl {
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
 	raw = strings.ReplaceAll(raw, "\r", "\n")
@@ -276,6 +302,7 @@ func parseRawHTTP(raw string) ParsedCurl {
 		result.Body = strings.TrimSpace(strings.Join(lines[bodyStart:], "\n"))
 	}
 
+	// Default to POST when a body is present but no method was specified
 	if result.Body != "" && result.Method == "GET" {
 		result.Method = "POST"
 	}
@@ -284,7 +311,8 @@ func parseRawHTTP(raw string) ParsedCurl {
 }
 
 // bodyTypeFromHeaders infers the body_type select value from a Content-Type header.
-// Falls back to "json" if no Content-Type is present or unrecognised.
+// Returns one of: "json", "xml", "form", "text".
+// Falls back to "json" if no Content-Type header is present or the value is unrecognised.
 func bodyTypeFromHeaders(headers []KVPair) string {
 	for _, h := range headers {
 		if strings.EqualFold(h.Key, "content-type") {
@@ -304,7 +332,9 @@ func bodyTypeFromHeaders(headers []KVPair) string {
 	return "json"
 }
 
-// ParseRawHTTPHandler handles POST /parse-raw-http
+// ParseRawHTTPHandler handles POST /parse-raw-http.
+// Parses the raw_http form field and returns a pre-filled form.html.
+// The minimum header row count is 2; at least 1 param row is always present.
 func ParseRawHTTPHandler(c *gin.Context) {
 	raw := strings.TrimSpace(c.PostForm("raw_http"))
 	if raw == "" {
@@ -332,8 +362,9 @@ func ParseRawHTTPHandler(c *gin.Context) {
 	})
 }
 
-// ParseCurlHandler handles POST /parse-curl
-// Parses the curl string and returns the pre-filled request form HTML.
+// ParseCurlHandler handles POST /parse-curl.
+// Parses the curl_command form field and returns a pre-filled form.html.
+// The minimum header row count is 2; at least 1 param row is always present.
 func ParseCurlHandler(c *gin.Context) {
 	curlCmd := strings.TrimSpace(c.PostForm("curl_command"))
 
@@ -362,7 +393,10 @@ func ParseCurlHandler(c *gin.Context) {
 	})
 }
 
-// defaultFormData returns the blank form state (used on first load and fallbacks).
+// defaultFormData returns the blank form state used on first load and as
+// a fallback when history/collection lookups fail. It provides sensible
+// defaults: GET method, empty URL, two blank header rows, one blank param row,
+// JSON body type, and no auth profile.
 func defaultFormData() gin.H {
 	return gin.H{
 		"Method":        "GET",
