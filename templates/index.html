@@ -455,7 +455,44 @@
         </form>
     </dialog>
 
+    <!-- ══════════════════════════════════
+         CONFIRM MODAL — replaces hx-confirm's native confirm(), which the
+         WKWebView shell (webview_go) doesn't implement and silently no-ops.
+    ══════════════════════════════════ -->
+    <dialog id="confirm-modal" class="modal">
+        <div class="modal-box w-11/12 max-w-sm">
+            <p id="confirm-modal-message" class="py-2"></p>
+            <div class="modal-action">
+                <button type="button" onclick="document.getElementById('confirm-modal').close()"
+                        class="btn btn-ghost btn-sm">Cancel</button>
+                <button type="button" id="confirm-modal-confirm-btn"
+                        class="btn btn-error btn-sm">Delete</button>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
     <script>
+    // ══════════════════════════════════════════════════════════════════════
+    // CONFIRM MODAL — intercepts htmx's hx-confirm requests
+    // ══════════════════════════════════════════════════════════════════════
+
+    document.body.addEventListener('htmx:confirm', function(e) {
+        if (!e.detail.question) return; // no hx-confirm attribute — let it proceed normally
+        e.preventDefault();
+
+        var modal = document.getElementById('confirm-modal');
+        document.getElementById('confirm-modal-message').textContent = e.detail.question;
+
+        var confirmBtn = document.getElementById('confirm-modal-confirm-btn');
+        confirmBtn.onclick = function() {
+            modal.close();
+            e.detail.issueRequest(true);
+        };
+
+        modal.showModal();
+    });
+
     // ══════════════════════════════════════════════════════════════════════
     // IMPORT MODAL
     // ══════════════════════════════════════════════════════════════════════

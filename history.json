@@ -1,22 +1,5 @@
 [
   {
-    "id": "1779903056306885000",
-    "method": "POST",
-    "url": "https://restful-booker.herokuapp.com/auth",
-    "headers": [
-      {
-        "Key": "Content-Type",
-        "Val": "application/json"
-      }
-    ],
-    "params": null,
-    "body": "{\n    \"username\" : \"admin\",\n    \"password\" : \"password123\"\n}",
-    "body_type": "json",
-    "status": 200,
-    "duration": "42ms",
-    "created_at": "May 27, 1:30 PM"
-  },
-  {
     "id": "1779903051208609000",
     "method": "POST",
     "url": "https://restful-booker.herokuapp.com/auth",
