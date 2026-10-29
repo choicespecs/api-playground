@@ -312,6 +312,43 @@ func parseLoginHeaders(raw string) map[string]string {
 	return m
 }
 
+// loginHeaderRows splits LoginHeadersRaw into ordered key/value rows for the
+// auth form, always returning at least one (blank) row.
+func loginHeaderRows(raw string) []KVPair {
+	var rows []KVPair
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			rows = append(rows, KVPair{strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])})
+		}
+	}
+	if len(rows) == 0 {
+		rows = append(rows, KVPair{"", ""})
+	}
+	return rows
+}
+
+// loginHeadersFromForm joins the auth form's login_header_key[] /
+// login_header_val[] rows back into the stored "Key: Value" per-line format.
+// Rows with a blank key are skipped.
+func loginHeadersFromForm(c *gin.Context) string {
+	keys := c.PostFormArray("login_header_key[]")
+	vals := c.PostFormArray("login_header_val[]")
+	var lines []string
+	for i, k := range keys {
+		k = strings.TrimSpace(k)
+		if k == "" || i >= len(vals) {
+			continue
+		}
+		lines = append(lines, k+": "+strings.TrimSpace(vals[i]))
+	}
+	return strings.Join(lines, "\n")
+}
+
 // min returns the smaller of two ints. Used for safe body preview truncation.
 func min(a, b int) int {
 	if a < b {
@@ -330,7 +367,12 @@ func authPanelData(editID string) gin.H {
 	if !editing {
 		edit = AuthProfile{LoginMethod: "POST", LoginBodyType: "json"}
 	}
-	return gin.H{"Profiles": loadAuthProfiles(), "Edit": edit, "Editing": editing}
+	return gin.H{
+		"Profiles":     loadAuthProfiles(),
+		"Edit":         edit,
+		"Editing":      editing,
+		"LoginHeaders": loginHeaderRows(edit.LoginHeadersRaw),
+	}
 }
 
 // AuthProfilesPanelHandler handles GET /auth-profiles.
@@ -352,7 +394,7 @@ func AuthProfileCreateHandler(c *gin.Context) {
 		LoginURL:        c.PostForm("login_url"),
 		LoginBodyType:   c.PostForm("login_body_type"),
 		LoginBody:       c.PostForm("login_body"),
-		LoginHeadersRaw: c.PostForm("login_headers_raw"),
+		LoginHeadersRaw: loginHeadersFromForm(c),
 		TokenPath:       c.PostForm("token_path"),
 		TokenHeaderName: c.PostForm("token_header_name"),
 		TokenPrefix:     c.PostForm("token_prefix"),
@@ -401,7 +443,7 @@ func AuthProfileTestLoginHandler(c *gin.Context) {
 		LoginURL:        c.PostForm("login_url"),
 		LoginBodyType:   c.PostForm("login_body_type"),
 		LoginBody:       c.PostForm("login_body"),
-		LoginHeadersRaw: c.PostForm("login_headers_raw"),
+		LoginHeadersRaw: loginHeadersFromForm(c),
 		TokenPath:       c.PostForm("token_path"),
 		TokenHeaderName: c.PostForm("token_header_name"),
 		TokenPrefix:     c.PostForm("token_prefix"),

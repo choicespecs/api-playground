@@ -117,11 +117,31 @@
     <div class="mb-3">
         <label class="label py-1">
             <span class="label-text text-xs">Extra Headers <span class="opacity-40">(optional)</span></span>
-            <span class="label-text-alt text-xs opacity-30">Key: Value, one per line</span>
         </label>
-        <textarea name="login_headers_raw" rows="2"
-                  placeholder="X-App-ID: myapp"
-                  class="textarea textarea-bordered textarea-sm w-full font-code text-xs leading-relaxed resize-none">{{ .LoginHeadersRaw }}</textarea>
+        <table class="table table-xs w-full">
+            <tbody id="login-headers-body">
+                {{ range $.LoginHeaders }}
+                <tr>
+                    <td class="p-1">
+                        <input type="text" name="login_header_key[]" value="{{ .Key }}" placeholder="Header"
+                               class="input input-bordered input-xs w-full font-code text-primary/80" />
+                    </td>
+                    <td class="p-1">
+                        <input type="text" name="login_header_val[]" value="{{ .Val }}" placeholder="value"
+                               class="input input-bordered input-xs w-full font-code" />
+                    </td>
+                    <td class="p-1 w-6">
+                        <button type="button" onclick="removeLoginHeaderRow(this)"
+                                class="btn btn-ghost btn-xs text-base-content/20 hover:text-error px-1">✕</button>
+                    </td>
+                </tr>
+                {{ end }}
+            </tbody>
+        </table>
+        <button type="button" onclick="addLoginHeaderRow()"
+                class="btn btn-ghost btn-xs mt-1 text-base-content/30 w-full border border-dashed border-base-300 hover:border-primary hover:text-primary">
+            + Add Header
+        </button>
     </div>
 
     <!-- Step 2: Token extraction -->
@@ -190,18 +210,30 @@
 </form>
 
 <script>
+// addLoginHeaderRow appends a blank key/value row to the Extra Headers table.
+function addLoginHeaderRow() {
+    var tbody = document.getElementById('login-headers-body');
+    var row = tbody.querySelector('tr').cloneNode(true);
+    row.querySelectorAll('input').forEach(function(i) { i.value = ''; });
+    tbody.appendChild(row);
+    row.querySelector('input').focus();
+}
+
+// removeLoginHeaderRow deletes a row, but only clears the last one so there is
+// always a row for addLoginHeaderRow to clone.
+function removeLoginHeaderRow(btn) {
+    var row = btn.closest('tr');
+    if (row.parentElement.children.length > 1) row.remove();
+    else row.querySelectorAll('input').forEach(function(i) { i.value = ''; });
+}
+
 function testLoginConfig(btn) {
     var form = btn.closest('form');
     var resultEl = document.getElementById('login-test-result');
     if (!form || !resultEl) return;
 
-    var data = new FormData();
-    ['login_method','login_url','login_body_type','login_body',
-     'login_headers_raw','token_path','token_header_name','token_prefix','expiry_path'
-    ].forEach(function(name) {
-        var el = form.querySelector('[name="' + name + '"]');
-        if (el) data.append(name, el.value);
-    });
+    // Send the whole form so every login_header_key[] / login_header_val[] row is included
+    var data = new FormData(form);
 
     btn.classList.add('loading');
     btn.disabled = true;

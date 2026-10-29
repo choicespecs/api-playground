@@ -93,7 +93,7 @@
         <div id="json-tree-toolbar" class="flex items-center gap-1 px-4 pt-2">
             <button type="button" class="btn btn-ghost btn-xs text-base-content/50" onclick="jsonTreeSetAll(true)">Expand all</button>
             <button type="button" class="btn btn-ghost btn-xs text-base-content/50" onclick="jsonTreeSetAll(false)">Collapse all</button>
-            <span class="text-xs text-base-content/30 ml-1 hidden sm:inline">⌥-click a node to toggle its children too</span>
+            <span id="json-tree-hint" class="text-xs text-base-content/30 ml-1 hidden sm:inline">⌥-click a node to toggle its children too</span>
             <span class="flex-1"></span>
             <button type="button" id="json-view-toggle" class="btn btn-ghost btn-xs text-base-content/50" onclick="toggleJsonRaw(this)">Raw</button>
         </div>
@@ -287,6 +287,9 @@ function toggleJsonRaw(btn) {
     var raw = document.getElementById('json-raw');
     var tree = document.getElementById('json-tree');
     if (!raw || !tree) return;
+    // The modifier is Option on macOS and Alt elsewhere (both set e.altKey)
+    var hint = document.getElementById('json-tree-hint');
+    if (hint && !/Mac/i.test(navigator.platform)) hint.textContent = 'Alt-click a node to toggle its children too';
     try {
         tree.appendChild(jtRender(null, parseJsonKeepLiterals(raw.textContent), false));
     } catch (err) {
