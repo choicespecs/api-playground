@@ -27,7 +27,7 @@ func main() {
 	// Give it a moment to bind port 8080 before the window tries to load
 	time.Sleep(400 * time.Millisecond)
 
-	// Open the native app window (WKWebView on macOS).
+	// Open the native app window (WKWebView on macOS, WebView2 on Windows).
 	// Must run on the main thread.
 	w := webview.New(false)
 	defer w.Destroy()

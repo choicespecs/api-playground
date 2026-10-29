@@ -87,6 +87,27 @@ The binary must be run from the project root directory — templates are loaded 
 
 ---
 
+## Option C — Windows (PowerShell)
+
+Requirements:
+- Go 1.26+ (`winget install GoLang.Go`)
+- A MinGW-w64 C/C++ compiler on `PATH` for CGO (`winget install BrechtSanders.WinLibs.POSIX.UCRT`, or MSYS2's `mingw-w64-ucrt-x86_64-gcc`)
+- Microsoft Edge WebView2 Runtime (preinstalled on Windows 10/11)
+
+```powershell
+cd api-playground
+.\build-windows.ps1 -Run     # build api-playground.exe and launch it
+.\api-playground.exe         # later runs
+```
+
+Use `.\build-windows.ps1 -Console` to keep a console window attached for logs. If PowerShell blocks the script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
+
+For development without the script: `$env:CGO_ENABLED=1; go run .`
+
+As in terminal mode, run from the project root; data files are written to the current directory.
+
+---
+
 ## Layout
 
 The workspace is split into three columns:
@@ -237,7 +258,10 @@ api-playground/
 ├── curl_parser.go       # curl and raw HTTP import parsers
 ├── environments.go      # environments system (dormant — kept for reference)
 ├── screen_darwin.go     # CGO CoreGraphics screen sizing
+├── screen_windows.go    # Win32 work-area screen sizing
+├── screen_other.go      # fixed fallback size (Linux, etc.)
 ├── build-app.sh         # builds "API Playground.app" for macOS
+├── build-windows.ps1    # builds api-playground.exe on Windows
 ├── go.mod / go.sum
 ├── templates/
 │   ├── index.html             # shell: layout, sidebar, modals, all JS

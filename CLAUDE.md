@@ -21,7 +21,9 @@ chmod +x build-app.sh
 ./build-app.sh
 ```
 
-**CGO is required.** `screen_darwin.go` calls CoreGraphics via CGO to read the display size. You need Xcode Command Line Tools installed (`xcode-select --install`).
+**CGO is required.** `webview_go` is C/C++, and `screen_darwin.go` calls CoreGraphics via CGO to read the display size. On macOS you need Xcode Command Line Tools (`xcode-select --install`).
+
+**Windows:** run `.\build-windows.ps1 -Run` from PowerShell. Requires Go, MinGW-w64 `gcc` on `PATH`, and the WebView2 runtime. `screen_windows.go` reads the work area via Win32 syscalls (no extra CGO); `screen_other.go` is a fixed-size fallback for other OSes. Every platform must provide `screenSize()`.
 
 ## Project structure
 
@@ -36,7 +38,10 @@ api-playground/
 ├── curl_parser.go       # curl tokeniser + raw HTTP block parser → form fields
 ├── environments.go      # Environments system (dormant — not wired into routes)
 ├── screen_darwin.go     # CGO: CoreGraphics screen size for window sizing
+├── screen_windows.go    # Win32: work-area screen size for window sizing
+├── screen_other.go      # Fixed fallback screen size (non-macOS/Windows)
 ├── build-app.sh         # Assembles "API Playground.app" bundle
+├── build-windows.ps1    # Builds api-playground.exe on Windows (PowerShell)
 ├── go.mod / go.sum
 └── templates/           # Go html/template files served by Gin
     ├── index.html            # Full shell: layout, sidebar, modals, all JS
@@ -109,7 +114,7 @@ Reset all data: `rm history.json auth_profiles.json variables.json collections.j
 - `environments.go` is fully implemented but its HTTP handlers are not registered in `main.go`. It is dead code from an earlier design iteration. Collection-scoped variables supersede it.
 - The local server has no authentication. Any local process can call `POST /send` to proxy requests through configured auth profiles. See `docs/SECURITY.md`.
 - Response bodies are truncated at 50,000 characters. Large payloads must be fetched via curl outside the app.
-- CGO makes cross-compilation and non-macOS builds impossible.
+- CGO makes cross-compilation impractical; build on each target OS (macOS via `build-app.sh`, Windows via `build-windows.ps1`). The Windows build has not been tested on real hardware yet.
 
 ## Documentation
 
