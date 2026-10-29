@@ -198,12 +198,13 @@ func SendRequest(c *gin.Context) {
 
 	isJSON := false
 	formattedBody := string(respBytes)
-	var jsonObj interface{}
-	if json.Unmarshal(respBytes, &jsonObj) == nil {
-		if pretty, err := json.MarshalIndent(jsonObj, "", "  "); err == nil {
-			formattedBody = string(pretty)
-			isJSON = true
-		}
+	// json.Indent re-formats the original bytes, preserving key order and exact
+	// number literals (decoding into interface{} would sort keys and round
+	// integers beyond 2^53).
+	var pretty bytes.Buffer
+	if json.Indent(&pretty, bytes.TrimSpace(respBytes), "", "  ") == nil {
+		formattedBody = pretty.String()
+		isJSON = true
 	}
 
 	// Truncate to prevent WKWebView jank on large payloads

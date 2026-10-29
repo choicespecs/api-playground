@@ -87,7 +87,21 @@
 
     <!-- ── Body panel ── -->
     <div id="resp-body-panel" class="flex-1 overflow-auto min-h-0">
+        {{ if and .IsJSON (not .Truncated) }}
+        <!-- Collapsible JSON tree, built client-side from #json-raw. Truncated
+             bodies are not valid JSON, so they fall through to the plain <pre>. -->
+        <div id="json-tree-toolbar" class="flex items-center gap-1 px-4 pt-2">
+            <button type="button" class="btn btn-ghost btn-xs text-base-content/50" onclick="jsonTreeSetAll(true)">Expand all</button>
+            <button type="button" class="btn btn-ghost btn-xs text-base-content/50" onclick="jsonTreeSetAll(false)">Collapse all</button>
+            <span class="text-xs text-base-content/30 ml-1 hidden sm:inline">⌥-click a node to toggle its children too</span>
+            <span class="flex-1"></span>
+            <button type="button" id="json-view-toggle" class="btn btn-ghost btn-xs text-base-content/50" onclick="toggleJsonRaw(this)">Raw</button>
+        </div>
+        <div id="json-tree" class="px-4 pb-4 pt-1 font-code text-xs leading-relaxed text-base-content/90"></div>
+        <pre id="json-raw" class="hidden p-4 font-code text-xs leading-relaxed text-base-content/90 whitespace-pre-wrap break-all">{{ .Body }}</pre>
+        {{ else }}
         <pre class="p-4 font-code text-xs leading-relaxed text-base-content/90 whitespace-pre-wrap break-all">{{ .Body }}</pre>
+        {{ end }}
     </div>
 
     <!-- ── Headers panel (hidden by default) ── -->
@@ -120,5 +134,168 @@ function switchRespTab(name, el) {
             .forEach(function(t) { t.classList.remove('tab-active'); });
     el.classList.add('tab-active');
 }
+
+// ── Collapsible JSON tree ──────────────────────────────────────────────────
+// The body is untrusted, so the tree is built with createElement/textContent
+// only — never innerHTML.
+
+// parseJsonKeepLiterals parses JSON into {t, v} nodes. Object members stay an
+// ordered [key, node] list and numbers keep their source text, so nothing is
+// reordered or rounded (JSON.parse would round integers beyond 2^53).
+function parseJsonKeepLiterals(src) {
+    var i = 0;
+    var scalar = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/y;
+    function ws() { while (i < src.length && ' \t\n\r'.indexOf(src[i]) >= 0) i++; }
+    function expect(ch) { ws(); if (src[i] !== ch) throw new Error('expected ' + ch + ' at ' + i); i++; }
+    function str() {
+        var start = i++;
+        while (src[i] !== '"') {
+            if (i >= src.length) throw new Error('unterminated string');
+            i += src[i] === '\\' ? 2 : 1;
+        }
+        i++;
+        return JSON.parse(src.slice(start, i));
+    }
+    function val() {
+        ws();
+        var c = src[i];
+        if (c === '{' || c === '[') {
+            var isObj = c === '{', close = isObj ? '}' : ']', items = [];
+            i++; ws();
+            if (src[i] === close) { i++; return { t: isObj ? 'obj' : 'arr', v: items }; }
+            for (;;) {
+                if (isObj) { ws(); var k = str(); expect(':'); items.push([k, val()]); }
+                else items.push([null, val()]);
+                ws();
+                if (src[i] === ',') { i++; continue; }
+                expect(close);
+                return { t: isObj ? 'obj' : 'arr', v: items };
+            }
+        }
+        if (c === '"') return { t: 'str', v: str() };
+        scalar.lastIndex = i;
+        var m = scalar.exec(src);
+        if (!m) throw new Error('unexpected token at ' + i);
+        i += m[0].length;
+        return { t: m[0] === 'null' ? 'null' : (m[0] === 'true' || m[0] === 'false') ? 'bool' : 'num', v: m[0] };
+    }
+    var root = val();
+    ws();
+    if (i !== src.length) throw new Error('trailing data at ' + i);
+    return root;
+}
+
+function jtSpan(cls, text) {
+    var s = document.createElement('span');
+    if (cls) s.className = cls;
+    s.textContent = text;
+    return s;
+}
+
+var jtValueClass = { str: 'text-success', num: 'text-warning', bool: 'text-info', null: 'text-info' };
+
+// jtRender returns the DOM for one node. key is null for array items/root.
+function jtRender(key, node, comma) {
+    var wrap = document.createElement('div');
+    var row = document.createElement('div');
+    row.className = 'flex items-start';
+    wrap.appendChild(row);
+
+    var isContainer = node.t === 'obj' || node.t === 'arr';
+    var caret = jtSpan('inline-block w-4 shrink-0 text-base-content/40 select-none', isContainer && node.v.length ? '▾' : '');
+    row.appendChild(caret);
+
+    var line = document.createElement('span');
+    line.className = 'whitespace-pre-wrap break-all';
+    row.appendChild(line);
+    if (key !== null) {
+        line.appendChild(jtSpan('text-primary/80', JSON.stringify(key)));
+        line.appendChild(jtSpan('text-base-content/50', ': '));
+    }
+
+    if (!isContainer) {
+        line.appendChild(jtSpan(jtValueClass[node.t], node.t === 'str' ? JSON.stringify(node.v) : node.v));
+        if (comma) line.appendChild(jtSpan('text-base-content/50', ','));
+        return wrap;
+    }
+
+    var open = node.t === 'obj' ? '{' : '[', close = node.t === 'obj' ? '}' : ']';
+    if (!node.v.length) {
+        line.appendChild(jtSpan('text-base-content/50', open + close + (comma ? ',' : '')));
+        return wrap;
+    }
+
+    var n = node.v.length;
+    line.appendChild(jtSpan('text-base-content/50', open));
+    var summary = jtSpan('hidden', '');
+    summary.appendChild(jtSpan('text-base-content/40', ' … '));
+    summary.appendChild(jtSpan('text-base-content/50', close + (comma ? ',' : '')));
+    summary.appendChild(jtSpan('text-base-content/30 ml-2', n + (node.t === 'obj' ? (n === 1 ? ' key' : ' keys') : (n === 1 ? ' item' : ' items'))));
+    line.appendChild(summary);
+
+    var children = document.createElement('div');
+    children.className = 'ml-[0.4rem] pl-2 border-l border-base-content/10';
+    node.v.forEach(function(kv, idx) {
+        children.appendChild(jtRender(kv[0], kv[1], idx < n - 1));
+    });
+    wrap.appendChild(children);
+
+    var closing = document.createElement('div');
+    closing.appendChild(jtSpan('inline-block w-4', ''));
+    closing.appendChild(jtSpan('text-base-content/50', close + (comma ? ',' : '')));
+    wrap.appendChild(closing);
+
+    wrap.dataset.jtNode = '1';
+    wrap._jt = { caret: caret, summary: summary, children: children, closing: closing };
+    row.classList.add('cursor-pointer', 'hover:bg-base-content/5', 'rounded');
+    row.addEventListener('click', function(e) {
+        var expand = wrap.dataset.collapsed === '1';
+        jtSetNode(wrap, expand);
+        if (e.altKey) wrap.querySelectorAll('[data-jt-node]').forEach(function(d) { jtSetNode(d, expand); });
+    });
+    return wrap;
+}
+
+function jtSetNode(wrap, expand) {
+    var p = wrap._jt;
+    if (!p) return;
+    wrap.dataset.collapsed = expand ? '' : '1';
+    p.caret.textContent = expand ? '▾' : '▸';
+    p.summary.classList.toggle('hidden', expand);
+    p.children.classList.toggle('hidden', !expand);
+    p.closing.classList.toggle('hidden', !expand);
+}
+
+// jsonTreeSetAll expands or collapses every node; collapsing keeps the root open so
+// its top-level members stay visible.
+function jsonTreeSetAll(expand) {
+    var tree = document.getElementById('json-tree');
+    if (!tree) return;
+    tree.querySelectorAll('[data-jt-node]').forEach(function(d) {
+        jtSetNode(d, expand || d === tree.firstElementChild);
+    });
+}
+
+function toggleJsonRaw(btn) {
+    var showRaw = btn.textContent.trim() === 'Raw';
+    document.getElementById('json-tree').classList.toggle('hidden', showRaw);
+    document.getElementById('json-raw').classList.toggle('hidden', !showRaw);
+    btn.textContent = showRaw ? 'Tree' : 'Raw';
+}
+
+(function initJsonTree() {
+    var raw = document.getElementById('json-raw');
+    var tree = document.getElementById('json-tree');
+    if (!raw || !tree) return;
+    try {
+        tree.appendChild(jtRender(null, parseJsonKeepLiterals(raw.textContent), false));
+    } catch (err) {
+        // Fall back to the plain pretty-printed text
+        tree.remove();
+        raw.classList.remove('hidden');
+        var bar = document.getElementById('json-tree-toolbar');
+        if (bar) bar.remove();
+    }
+})();
 </script>
 {{ end }}
