@@ -330,7 +330,7 @@ func CollectionRequestLoadHandler(c *gin.Context) {
 	}
 
 	headers := req.Headers
-	for len(headers) < 2 {
+	for len(headers) < 1 {
 		headers = append(headers, KVPair{"", ""})
 	}
 	params := req.Params

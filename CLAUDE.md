@@ -40,6 +40,8 @@ api-playground/
 ├── screen_darwin.go     # CGO: CoreGraphics screen size for window sizing
 ├── screen_windows.go    # Win32: work-area screen size for window sizing
 ├── screen_other.go      # Fixed fallback screen size (non-macOS/Windows)
+├── menu_darwin.go       # CGO: macOS menu bar (Edit menu enables ⌘C/⌘V; Quit)
+├── menu_other.go        # No-op menu setup for non-macOS
 ├── build-app.sh         # Assembles "API Playground.app" bundle
 ├── build-windows.ps1    # Builds api-playground.exe on Windows (PowerShell)
 ├── go.mod / go.sum
@@ -68,7 +70,7 @@ api-playground/
 
 5. **IDs are nanosecond Unix timestamps** (`fmt.Sprintf("%d", time.Now().UnixNano())`). This is intentional — no UUID dependency, human-readable in JSON.
 
-6. **Port 8080 is hardcoded.** Do not change it without updating `main.go` (the `w.Navigate` URL) and the README.
+6. **Port 8080 is hardcoded, loopback only.** The address is `serverAddr` (`127.0.0.1:8080`) in `main.go`, used for both the listener and the window URL. Never bind `:8080` (all interfaces). If the port is taken, the window shows an error page instead of loading. Update the README if it changes.
 
 ## Common tasks
 

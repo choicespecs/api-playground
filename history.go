@@ -156,7 +156,7 @@ func HistoryLoadHandler(c *gin.Context) {
 	for _, entry := range loadHistory() {
 		if entry.ID == id {
 			headers := entry.Headers
-			for len(headers) < 2 {
+			for len(headers) < 1 {
 				headers = append(headers, KVPair{"", ""})
 			}
 			params := entry.Params

@@ -81,7 +81,7 @@ All outbound requests are proxied through the local Go server. The WKWebView doe
 
 ## Local server exposure
 
-The Gin server listens on `localhost:8080` (loopback only) with no authentication, no CSRF protection, and no origin checking.
+The Gin server listens on `127.0.0.1:8080` (loopback only) with no authentication, no CSRF protection, and no origin checking.
 
 ### What a local attacker can do
 
@@ -103,7 +103,7 @@ Any process running as the same user (or any user, since the port is on localhos
 
 ### Mitigations
 
-- The server binds to `127.0.0.1` implicitly (`:8080` on Go's default listener). Network-level access from other machines is not possible.
+- The server binds explicitly to `127.0.0.1:8080` (`serverAddr` in `main.go`). Before Oct 2026 it used `:8080`, which listened on all interfaces and exposed the proxy to the local network. Network-level access from other machines is no longer possible.
 - Standard macOS user-account isolation prevents other users' processes from reaching the port.
 - The port is only open while the app is running.
 

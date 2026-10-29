@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
+	"html"
 	"html/template"
-	"time"
+	"net"
 
 	"github.com/gin-gonic/gin"
 	webview "github.com/webview/webview_go"
@@ -21,17 +23,19 @@ func main() {
 	// Silence gin logs — the user never sees a terminal
 	gin.SetMode(gin.ReleaseMode)
 
-	// Start the HTTP server on a background goroutine
-	go startServer()
-
-	// Give it a moment to bind port 8080 before the window tries to load
-	time.Sleep(400 * time.Millisecond)
+	// Bind loopback only (not all interfaces) before opening the window, so a
+	// port conflict is reported instead of loading another program's server.
+	ln, listenErr := net.Listen("tcp", serverAddr)
+	if listenErr == nil {
+		go startServer(ln)
+	}
 
 	// Open the native app window (WKWebView on macOS, WebView2 on Windows).
 	// Must run on the main thread.
 	w := webview.New(false)
 	defer w.Destroy()
 	w.SetTitle("⚡ API Playground")
+	setupMainMenu() // macOS: enables ⌘C / ⌘V / ⌘X / ⌘A / ⌘Z
 
 	// Size the window to fit the screen.
 	// Prefer up to 1400×900 but never exceed the available display area.
@@ -46,13 +50,26 @@ func main() {
 	}
 	w.SetSize(winW, winH, webview.HintNone)
 
-	w.Navigate("http://localhost:8080")
+	if listenErr != nil {
+		w.SetHtml(fmt.Sprintf(`<body style="font-family:-apple-system,Segoe UI,sans-serif;padding:2rem">
+<h2>API Playground couldn't start</h2>
+<p>Port 8080 is already in use by another program, so the local server can't run.</p>
+<p>Stop the other program, then reopen the app.</p>
+<pre style="color:#888">%s</pre></body>`, html.EscapeString(listenErr.Error())))
+	} else {
+		w.Navigate("http://" + serverAddr)
+	}
 	w.Run() // blocks until the window is closed
 }
 
-// startServer configures the Gin router with all application routes and starts
-// listening on :8080. It is called as a goroutine from main() so the server
-// runs concurrently with the WKWebView window.
+// serverAddr is the loopback address the local server listens on and the
+// window loads. Using 127.0.0.1 (not "localhost") avoids resolving to a
+// different process that holds the same port on ::1 or 127.0.0.1.
+const serverAddr = "127.0.0.1:8080"
+
+// startServer configures the Gin router with all application routes and serves
+// on ln (bound to serverAddr by main). It is called as a goroutine from main()
+// so the server runs concurrently with the WKWebView window.
 //
 // Route groups:
 //   - Main UI:       GET /
@@ -62,7 +79,7 @@ func main() {
 //   - Auth profiles: /auth-profiles*
 //   - Variables:     /variables*
 //   - Collections:   /collections*
-func startServer() {
+func startServer(ln net.Listener) {
 	router := gin.Default()
 
 	// Register custom template functions before loading templates
@@ -128,5 +145,5 @@ func startServer() {
 	router.GET("/collections/:id/requests/:req_id", CollectionRequestLoadHandler)      // before /:id
 	router.DELETE("/collections/:id/requests/:req_id", CollectionRequestDeleteHandler) // before /:id
 
-	router.Run(":8080")
+	router.RunListener(ln)
 }

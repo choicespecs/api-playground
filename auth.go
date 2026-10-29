@@ -323,18 +323,27 @@ func min(a, b int) int {
 // ── HTTP Handlers ──────────────────────────────────────────────────────────
 
 // authPanelData returns the common template context for auth profile views.
-func authPanelData() gin.H {
-	return gin.H{"Profiles": loadAuthProfiles()}
+// editID selects the profile loaded into the form; "" (or an unknown ID)
+// renders a blank new-profile form.
+func authPanelData(editID string) gin.H {
+	edit, editing := getAuthProfile(editID)
+	if !editing {
+		edit = AuthProfile{LoginMethod: "POST", LoginBodyType: "json"}
+	}
+	return gin.H{"Profiles": loadAuthProfiles(), "Edit": edit, "Editing": editing}
 }
 
 // AuthProfilesPanelHandler handles GET /auth-profiles.
 // Returns the auth profiles modal HTML (auth_profiles.html).
+// The optional ?edit=<id> query loads that profile into the form for editing.
 func AuthProfilesPanelHandler(c *gin.Context) {
-	c.HTML(200, "auth_profiles.html", authPanelData())
+	c.HTML(200, "auth_profiles.html", authPanelData(c.Query("edit")))
 }
 
 // AuthProfileCreateHandler handles POST /auth-profiles.
-// Creates a new auth profile from form fields and fires authProfilesUpdated.
+// Creates a new auth profile from form fields, or updates the existing one
+// when the form carries an id. Fires authProfilesUpdated and re-renders the
+// modal with the saved profile still loaded in the form.
 func AuthProfileCreateHandler(c *gin.Context) {
 	p := AuthProfile{
 		Type:            "login",
@@ -352,9 +361,16 @@ func AuthProfileCreateHandler(c *gin.Context) {
 	if p.Name == "" {
 		p.Name = "Token API Profile"
 	}
-	addAuthProfile(p)
+	if existing, ok := getAuthProfile(c.PostForm("id")); ok {
+		// Keep identity; drop the cached token since the login config may have changed
+		p.ID = existing.ID
+		p.CreatedAt = existing.CreatedAt
+		updateAuthProfile(p)
+	} else {
+		p = addAuthProfile(p)
+	}
 	c.Header("HX-Trigger", "authProfilesUpdated")
-	c.HTML(200, "auth_profiles.html", authPanelData())
+	c.HTML(200, "auth_profiles.html", authPanelData(p.ID))
 }
 
 // AuthProfileDeleteHandler handles DELETE /auth-profiles/:id.
@@ -362,7 +378,7 @@ func AuthProfileCreateHandler(c *gin.Context) {
 func AuthProfileDeleteHandler(c *gin.Context) {
 	deleteAuthProfile(c.Param("id"))
 	c.Header("HX-Trigger", "authProfilesUpdated")
-	c.HTML(200, "auth_profiles.html", authPanelData())
+	c.HTML(200, "auth_profiles.html", authPanelData(""))
 }
 
 // AuthProfilesOptionsHandler handles GET /auth-profiles/options.

@@ -296,10 +296,10 @@ api-playground/
 | `GET` | `/history/:id` | Load a history entry into the form |
 | `DELETE` | `/history/:id` | Delete a history entry |
 | `POST` | `/history/import` | Import history from a JSON file |
-| `GET` | `/auth-profiles` | Auth profiles modal HTML |
+| `GET` | `/auth-profiles` | Auth profiles modal HTML (`?edit=<id>` loads a profile into the form) |
 | `GET` | `/auth-profiles/options` | `<option>` elements for auth select |
 | `POST` | `/auth-profiles/test-login` | Test a Token API config |
-| `POST` | `/auth-profiles` | Create an auth profile |
+| `POST` | `/auth-profiles` | Create an auth profile, or update it when `id` is sent |
 | `DELETE` | `/auth-profiles/:id` | Delete an auth profile |
 | `GET` | `/variables/map` | Merged variable map as JSON (global + collection) |
 | `GET` | `/variables/list` | Global variable list as JSON (with IDs) |

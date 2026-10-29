@@ -334,7 +334,7 @@ func bodyTypeFromHeaders(headers []KVPair) string {
 
 // ParseRawHTTPHandler handles POST /parse-raw-http.
 // Parses the raw_http form field and returns a pre-filled form.html.
-// The minimum header row count is 2; at least 1 param row is always present.
+// The minimum header row count is 1; at least 1 param row is always present.
 func ParseRawHTTPHandler(c *gin.Context) {
 	raw := strings.TrimSpace(c.PostForm("raw_http"))
 	if raw == "" {
@@ -344,7 +344,7 @@ func ParseRawHTTPHandler(c *gin.Context) {
 
 	parsed := parseRawHTTP(raw)
 
-	for len(parsed.Headers) < 2 {
+	for len(parsed.Headers) < 1 {
 		parsed.Headers = append(parsed.Headers, KVPair{"", ""})
 	}
 	if len(parsed.Params) == 0 {
@@ -364,7 +364,7 @@ func ParseRawHTTPHandler(c *gin.Context) {
 
 // ParseCurlHandler handles POST /parse-curl.
 // Parses the curl_command form field and returns a pre-filled form.html.
-// The minimum header row count is 2; at least 1 param row is always present.
+// The minimum header row count is 1; at least 1 param row is always present.
 func ParseCurlHandler(c *gin.Context) {
 	curlCmd := strings.TrimSpace(c.PostForm("curl_command"))
 
@@ -375,7 +375,7 @@ func ParseCurlHandler(c *gin.Context) {
 
 	parsed := parseCurl(curlCmd)
 
-	for len(parsed.Headers) < 2 {
+	for len(parsed.Headers) < 1 {
 		parsed.Headers = append(parsed.Headers, KVPair{"", ""})
 	}
 	if len(parsed.Params) == 0 {
@@ -395,13 +395,13 @@ func ParseCurlHandler(c *gin.Context) {
 
 // defaultFormData returns the blank form state used on first load and as
 // a fallback when history/collection lookups fail. It provides sensible
-// defaults: GET method, empty URL, two blank header rows, one blank param row,
+// defaults: GET method, empty URL, one blank header row, one blank param row,
 // JSON body type, and no auth profile.
 func defaultFormData() gin.H {
 	return gin.H{
 		"Method":        "GET",
 		"URL":           "",
-		"Headers":       []KVPair{{"", ""}, {"", ""}},
+		"Headers":       []KVPair{{"", ""}},
 		"Params":        []KVPair{{"", ""}},
 		"Body":          "",
 		"BodyType":      "json",

@@ -67,12 +67,12 @@
                     <tr>
                         <td class="p-1">
                             <input type="text" name="header_key[]" value="{{ .Key }}"
-                                   placeholder="Content-Type"
+                                   placeholder="Header"
                                    class="input input-ghost input-xs w-full font-code text-primary/80" />
                         </td>
                         <td class="p-1">
                             <input type="text" name="header_val[]" value="{{ .Val }}"
-                                   placeholder="application/json"
+                                   placeholder="value"
                                    class="input input-ghost input-xs w-full font-code" />
                         </td>
                         <td class="p-1">
@@ -190,7 +190,7 @@ function switchTab(name, el) {
 function addRow(type, key, val) {
     var tbody = document.getElementById(type + '-body');
     var prefix = type === 'headers' ? 'header' : 'param';
-    var ph = type === 'headers' ? ['Content-Type','application/json'] : ['key','value'];
+    var ph = type === 'headers' ? ['Header','value'] : ['key','value'];
     var row = document.createElement('tr');
     row.innerHTML =
         '<td class="p-1">' +
