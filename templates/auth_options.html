@@ -3,5 +3,5 @@
      Selection is restored client-side by the htmx:afterSettle listener. */}}
 <option value="">— No Auth —</option>
 {{ range .Profiles }}
-<option value="{{ .ID }}">{{ .Name }} ({{ .TypeLabel }})</option>
+<option value="{{ .ID }}">{{ .Name }}</option>
 {{ end }}

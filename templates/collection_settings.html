@@ -40,7 +40,7 @@
                 <option value="">— None —</option>
                 {{ range .Profiles }}
                 <option value="{{ .ID }}" {{ if eq $.Collection.AuthProfileID .ID }}selected{{ end }}>
-                    {{ .Name }} ({{ .TypeLabel }})
+                    {{ .Name }}
                 </option>
                 {{ end }}
             </select>
